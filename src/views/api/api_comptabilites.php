@@ -31,11 +31,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-// Prevent PHP warnings/notices being printed into the HTTP response body which would break JSON parsing
-ini_set('display_errors', '0');
-ini_set('display_startup_errors', '0');
-error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
-
 // ===================== PHPMailer =====================
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
@@ -189,9 +184,9 @@ try {
                 $params[] = $id_entreprise;
             }
             $sql .= " ORDER BY libelle ASC";
-                $rows = $db->query($sql, $params);
-                if (!is_array($rows)) $rows = [];
-                jsonResponse(200, ['success' => true, 'data' => $rows]);
+            $rows = $db->query($sql, $params);
+            if (!is_array($rows)) $rows = [];
+            jsonResponse(200, ['success' => true, 'data' => $rows]);
         }
 
         if ($action === 'list_depenses') {

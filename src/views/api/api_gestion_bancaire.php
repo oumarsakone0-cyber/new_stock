@@ -29,11 +29,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-// Prevent PHP warnings/notices being printed into the HTTP response body which would break JSON parsing
-ini_set('display_errors', '0');
-ini_set('display_startup_errors', '0');
-error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
-
 // ===================== PHPMailer =====================
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
@@ -43,14 +38,9 @@ require 'phpmailer/PHPMailer.php';
 require 'phpmailer/SMTP.php';
 require_once 'Mailer.php';
 
-// ===================== Database + JWT =====================
+// ===================== Database + Auth (JWT + user from DB pour id_entreprise fiable) =====================
 require_once __DIR__ . '/config/database.php';
-require_once __DIR__ . '/libs/JWT.php';
-require_once __DIR__ . '/libs/Key.php';
-use Firebase\JWT\JWT;
-use Firebase\JWT\Key;
-
-define('JWT_SECRET', '4e9f1c7b2a6d8f3c5e9a0b7d4c2f8a6e1b3c9d7e5f0a2b4c6d8e1f3a5b7c9d2');
+require_once __DIR__ . '/auth.php';
 
 // ===================== Fonctions utilitaires =====================
 
@@ -79,26 +69,6 @@ function getStr($value, $default = '') {
     return trim((string)$value);
 }
 
-function authenticateJWT() {
-    $headers = getallheaders();
-    $headersLower = [];
-    foreach ($headers as $k => $v) {
-        $headersLower[strtolower($k)] = $v;
-    }
-    $authHeader = $headersLower['authorization'] ?? '';
-
-    if (!$authHeader || !preg_match('/Bearer\s(\S+)/', $authHeader, $matches)) {
-        jsonResponse(401, ['success' => false, 'error' => 'Token requis']);
-    }
-
-    try {
-        $decoded = JWT::decode($matches[1], new Key(JWT_SECRET, 'HS256'));
-        return (array)$decoded->data;
-    } catch (Throwable $e) {
-        jsonResponse(401, ['success' => false, 'error' => 'Token invalide ou expire']);
-    }
-}
-
 // ===================== Notification Email aux Admins =====================
 function sendBancaireEmailToAdmins($db, $id_entreprise, $subject, $htmlContent, $auteur = '') {
     try {
@@ -111,7 +81,7 @@ function sendBancaireEmailToAdmins($db, $id_entreprise, $subject, $htmlContent, 
             $params[] = $id_entreprise;
         }
         $admins = $db->query($sql, $params);
-        if (empty($admins) || !is_array($admins)) return;
+        if (empty($admins)) return;
 
         foreach ($admins as $admin) {
             $to = trim($admin['email'] ?? '');
@@ -119,10 +89,16 @@ function sendBancaireEmailToAdmins($db, $id_entreprise, $subject, $htmlContent, 
 
             $nomComplet = trim(($admin['prenom'] ?? '') . ' ' . ($admin['nom'] ?? ''));
             $body  = "<div style='font-family:Arial,sans-serif;max-width:600px;margin:0 auto;'>";
-            $body .= "<h2 style='color:#333;border-bottom:2px solid #007bff;padding-bottom:10px;'>" . htmlspecialchars($subject) . "</h2>";
+            $body .= "<h2 style='color:#333;border-bottom:2px solid #007bff;padding-bottom:10px;'>"
+                   . htmlspecialchars($subject) . "</h2>";
             $body .= "<p>Bonjour " . htmlspecialchars($nomComplet ?: 'Admin') . ",</p>";
+            if ($auteur !== '') {
+                $body .= "<p>Action effectuee par <strong>" . htmlspecialchars($auteur) . "</strong>.</p>";
+            }
             $body .= $htmlContent;
-            $body .= "<p style='color:#666;font-size:12px;margin-top:20px;border-top:1px solid #eee;padding-top:10px;'>Notification automatique - Gestion Bancaire.</p></div>";
+            $body .= "<p style='color:#666;font-size:12px;margin-top:20px;border-top:1px solid #eee;padding-top:10px;'>"
+                   . "Notification automatique - Gestion Bancaire."
+                   . "</p></div>";
 
             if (class_exists('Mailer') && method_exists('Mailer', 'sendSimpleHtml')) {
                 Mailer::sendSimpleHtml($to, $subject, $body);
@@ -134,122 +110,233 @@ function sendBancaireEmailToAdmins($db, $id_entreprise, $subject, $htmlContent, 
         error_log("sendBancaireEmailToAdmins error: " . $e->getMessage());
     }
 }
-                        t.id_transaction as id,
-                        t.id_compte,
-                        c.nom_compte as compte_nom,
-                        t.date_transaction,
-                        t.sens,
-                        t.montant,
-                        t.reference,
-                        t.libelle,
-                        t.note,
-                        t.date_creation
-                    FROM app_compta_transactions_bancaires t
-                    INNER JOIN app_compta_comptes_bancaires c ON c.id_compte = t.id_compte
+
+// ===================== AUTHENTIFICATION (user depuis la BDD pour id_entreprise correct) =====================
+$authUser = getUserFromToken();
+$auth_user_id       = $authUser['id'] ?? null;
+$auth_id_entreprise = $authUser['id_entreprise'] ?? null;
+$auth_nom           = trim(($authUser['prenom'] ?? '') . ' ' . ($authUser['nom'] ?? ''));
+$access             = $authUser['access'] ?? [];
+$is_admin           = is_array($access) && in_array('ALL', $access);
+
+try {
+    if (!class_exists('Database')) {
+        throw new Exception("Classe Database introuvable dans config/database.php");
+    }
+    $db = new Database();
+
+    $method = $_SERVER['REQUEST_METHOD'];
+    $action = $_GET['action'] ?? '';
+
+    // id_entreprise: priorite aux parametres GET/POST, sinon token JWT
+    $id_entreprise = isset($_GET['id_entreprise']) && $_GET['id_entreprise'] !== '' 
+        ? (int)$_GET['id_entreprise'] 
+        : $auth_id_entreprise;
+
+    // ===================== GET =====================
+    if ($method === 'GET') {
+        if ($action === 'list_comptes') {
+            $sql = "SELECT 
+                        c.id_compte as id,
+                        c.banque,
+                        c.nom_compte,
+                        c.devise,
+                        COALESCE(c.solde_initial, 0)
+                          + COALESCE(SUM(CASE WHEN t.sens = 'CREDIT' THEN t.montant ELSE 0 END), 0)
+                          - COALESCE(SUM(CASE WHEN t.sens = 'DEBIT' THEN t.montant ELSE 0 END), 0)
+                          AS solde_actuel
+                    FROM app_compta_comptes_bancaires c
+                    LEFT JOIN app_compta_transactions_bancaires t ON t.id_compte = c.id_compte
                     WHERE 1=1";
             $params = [];
-            // Allow bypassing tenant filter for debugging with ?force_all=1
-            if (!(isset($_GET['force_all']) && $_GET['force_all'] == '1') && $id_entreprise !== null) {
-                $sql .= " AND (t.id_entreprise = ? OR t.id_entreprise IS NULL)";
+            if (!$is_admin && $id_entreprise !== null) {
+                $sql .= " AND (c.id_entreprise = ? OR c.id_entreprise IS NULL)";
+                $params[] = $id_entreprise;
+            }
+            $sql .= " GROUP BY c.id_compte
+                      ORDER BY c.nom_compte ASC";
+            $rows = $db->query($sql, $params);
+            if (!is_array($rows)) $rows = [];
+            foreach ($rows as &$r) {
+                $r['solde_actuel'] = (float)($r['solde_actuel'] ?? 0);
+            }
+            unset($r);
+            jsonResponse(200, ['success' => true, 'data' => $rows]);
+        }
+
+        // Action combinee : comptes + transactions en une requete (pour la page Transactions)
+        if ($action === 'list_comptes_et_transactions') {
+            $date_debut = getStr($_GET['date_debut'] ?? '');
+            $date_fin = getStr($_GET['date_fin'] ?? '');
+            $id_compte = getInt($_GET['id_compte'] ?? null, null);
+            $sens = getStr($_GET['sens'] ?? '');
+            $search = getStr($_GET['search'] ?? '');
+
+            $sql_comptes = "SELECT 
+                        c.id_compte as id,
+                        c.banque,
+                        c.nom_compte,
+                        c.devise,
+                        COALESCE(c.solde_initial, 0)
+                          + COALESCE(SUM(CASE WHEN t.sens = 'CREDIT' THEN t.montant ELSE 0 END), 0)
+                          - COALESCE(SUM(CASE WHEN t.sens = 'DEBIT' THEN t.montant ELSE 0 END), 0)
+                          AS solde_actuel
+                    FROM app_compta_comptes_bancaires c
+                    LEFT JOIN app_compta_transactions_bancaires t ON t.id_compte = c.id_compte
+                    WHERE 1=1";
+            $params_c = [];
+            if (!$is_admin && $id_entreprise !== null) {
+                $sql_comptes .= " AND (c.id_entreprise = ? OR c.id_entreprise IS NULL)";
+                $params_c[] = $id_entreprise;
+            }
+            $sql_comptes .= " GROUP BY c.id_compte ORDER BY c.nom_compte ASC";
+            $comptes = $db->query($sql_comptes, $params_c);
+            if (!is_array($comptes)) $comptes = [];
+            foreach ($comptes as &$r) {
+                $r['solde_actuel'] = (float)($r['solde_actuel'] ?? 0);
+            }
+            unset($r);
+
+            // Requete simple SANS JOIN : la table a des lignes mais le JOIN renvoyait 0 (souvent type/alias MySQL)
+            $sql_t = "SELECT
+                        id_transaction as id,
+                        id_compte,
+                        date_transaction,
+                        sens,
+                        montant,
+                        reference,
+                        libelle,
+                        note,
+                        date_creation
+                    FROM app_compta_transactions_bancaires
+                    WHERE 1=1";
+            $params_t = [];
+            if (!$is_admin && $id_entreprise !== null) {
+                $sql_t .= " AND (id_entreprise = ? OR id_entreprise IS NULL)";
+                $params_t[] = $id_entreprise;
+            }
+            if ($id_compte !== null) {
+                $sql_t .= " AND id_compte = ?";
+                $params_t[] = $id_compte;
+            }
+            if ($sens === 'DEBIT' || $sens === 'CREDIT') {
+                $sql_t .= " AND sens = ?";
+                $params_t[] = $sens;
+            }
+            if ($date_debut !== '') {
+                $sql_t .= " AND date_transaction >= ?";
+                $params_t[] = $date_debut;
+            }
+            if ($date_fin !== '') {
+                $sql_t .= " AND date_transaction <= ?";
+                $params_t[] = $date_fin;
+            }
+            if ($search !== '') {
+                $sql_t .= " AND (reference LIKE ? OR libelle LIKE ? OR note LIKE ?)";
+                $like = '%' . $search . '%';
+                $params_t[] = $like;
+                $params_t[] = $like;
+                $params_t[] = $like;
+            }
+            $sql_t .= " ORDER BY date_transaction DESC, id_transaction DESC";
+            try {
+                $transactions = $db->query($sql_t, $params_t);
+            } catch (Throwable $e) {
+                error_log("list_comptes_et_transactions: " . $e->getMessage());
+                $transactions = [];
+            }
+            if (!is_array($transactions)) $transactions = [];
+            // Associer le nom du compte depuis la liste des comptes deja chargee
+            $comptesById = [];
+            foreach ($comptes as $c) {
+                $comptesById[(int)($c['id'] ?? 0)] = $c['nom_compte'] ?? '--';
+            }
+            foreach ($transactions as &$r) {
+                $r['montant'] = (float)($r['montant'] ?? 0);
+                $r['compte_nom'] = $comptesById[(int)($r['id_compte'] ?? 0)] ?? '--';
+            }
+            unset($r);
+
+            jsonResponse(200, [
+                'success' => true,
+                'comptes' => $comptes,
+                'transactions' => $transactions,
+            ]);
+        }
+
+        if ($action === 'list_transactions') {
+            $date_debut = getStr($_GET['date_debut'] ?? '');
+            $date_fin = getStr($_GET['date_fin'] ?? '');
+            $id_compte = getInt($_GET['id_compte'] ?? null, null);
+            $sens = getStr($_GET['sens'] ?? '');
+            $search = getStr($_GET['search'] ?? '');
+
+            // Meme requete simple SANS JOIN que list_comptes_et_transactions (le JOIN renvoyait 0 ligne)
+            $sql = "SELECT
+                        id_transaction as id,
+                        id_compte,
+                        date_transaction,
+                        sens,
+                        montant,
+                        reference,
+                        libelle,
+                        note,
+                        date_creation
+                    FROM app_compta_transactions_bancaires
+                    WHERE 1=1";
+            $params = [];
+            if (!$is_admin && $id_entreprise !== null) {
+                $sql .= " AND (id_entreprise = ? OR id_entreprise IS NULL)";
                 $params[] = $id_entreprise;
             }
             if ($id_compte !== null) {
-                $sql .= " AND t.id_compte = ?";
+                $sql .= " AND id_compte = ?";
                 $params[] = $id_compte;
             }
             if ($sens === 'DEBIT' || $sens === 'CREDIT') {
-                $sql .= " AND t.sens = ?";
+                $sql .= " AND sens = ?";
                 $params[] = $sens;
             }
             if ($date_debut !== '') {
-                $sql .= " AND t.date_transaction >= ?";
+                $sql .= " AND date_transaction >= ?";
                 $params[] = $date_debut;
             }
             if ($date_fin !== '') {
-                $sql .= " AND t.date_transaction <= ?";
+                $sql .= " AND date_transaction <= ?";
                 $params[] = $date_fin;
             }
             if ($search !== '') {
-                $sql .= " AND (t.reference LIKE ? OR t.libelle LIKE ? OR t.note LIKE ?)";
+                $sql .= " AND (reference LIKE ? OR libelle LIKE ? OR note LIKE ?)";
                 $like = '%' . $search . '%';
                 $params[] = $like;
                 $params[] = $like;
                 $params[] = $like;
             }
-            $sql .= " ORDER BY t.date_transaction DESC, t.id_transaction DESC";
-            $rows = $db->query($sql, $params);
-            // normalize montant
+            $sql .= " ORDER BY date_transaction DESC, id_transaction DESC";
+            try {
+                $rows = $db->query($sql, $params);
+            } catch (Throwable $e) {
+                error_log("list_transactions: " . $e->getMessage());
+                $rows = [];
+            }
+            if (!is_array($rows)) $rows = [];
+            // Nom du compte : charger la liste des comptes et associer en PHP
+            $comptesList = [];
+            try {
+                $comptesList = $db->query("SELECT id_compte, nom_compte FROM app_compta_comptes_bancaires", []);
+            } catch (Throwable $e) {
+                $comptesList = [];
+            }
+            $comptesById = [];
+            foreach (is_array($comptesList) ? $comptesList : [] as $c) {
+                $comptesById[(int)($c['id_compte'] ?? 0)] = $c['nom_compte'] ?? '--';
+            }
             foreach ($rows as &$r) {
                 $r['montant'] = (float)($r['montant'] ?? 0);
+                $r['compte_nom'] = $comptesById[(int)($r['id_compte'] ?? 0)] ?? '--';
             }
             unset($r);
-
-                // Fallback: run same filters but without joining to accounts table to see if JOIN filters out rows
-                try {
-                    // Build a fallback SQL by removing the JOIN but keeping the same WHERE and placeholders
-                    $sql_nojoin = $sql;
-                    // remove select column c.nom_compte as compte_nom,
-                    $sql_nojoin = str_replace('c.nom_compte as compte_nom,', '', $sql_nojoin);
-                    // remove the INNER JOIN clause
-                    $sql_nojoin = str_replace('INNER JOIN app_compta_comptes_bancaires c ON c.id_compte = t.id_compte', '', $sql_nojoin);
-                    $params_nojoin = $params; // same filters and placeholders remain
-                    $rows_nojoin = $db->query($sql_nojoin, $params_nojoin);
-                    if (!is_array($rows_nojoin)) $rows_nojoin = [];
-                } catch (Throwable $e) {
-                    $rows_nojoin = [];
-                    error_log('list_transactions fallback query failed: ' . $e->getMessage());
-                }
-
-            $payload = ['success' => true, 'data' => $rows];
-            // Optional debug: append SQL and params when ?debug=1 is present (dev only)
-            // Include debug info in the response to help diagnose empty results
-            $payload['debug'] = [
-                'sql' => $sql,
-                'params' => $params,
-                'rows_count' => is_array($rows) ? count($rows) : 0,
-                'rows_nojoin_count' => isset($rows_nojoin) && is_array($rows_nojoin) ? count($rows_nojoin) : 0,
-                'sample_nojoin' => isset($rows_nojoin) && is_array($rows_nojoin) && count($rows_nojoin) ? $rows_nojoin[0] : null,
-                'auth_user_id' => $auth_user_id ?? null,
-                'auth_nom' => $auth_nom ?? null,
-                'id_entreprise_effective' => $id_entreprise ?? null,
-                'request_get' => $_GET,
-                'force_all' => isset($_GET['force_all']) && $_GET['force_all'] == '1'
-            ];
-
-            // Server-side logging to PHP error log to help diagnose empty results
-            try {
-                $logParts = [];
-                $logParts[] = 'API list_transactions';
-                $logParts[] = 'user=' . ($auth_user_id ?? 'null');
-                $logParts[] = 'entreprise=' . ($id_entreprise ?? 'null');
-                $logParts[] = 'params=' . json_encode($params, JSON_UNESCAPED_UNICODE);
-                $logParts[] = 'rows_count=' . (is_array($rows) ? count($rows) : 0);
-                $logParts[] = 'sample_row=' . json_encode(is_array($rows) && count($rows) ? $rows[0] : null, JSON_UNESCAPED_UNICODE);
-                error_log(implode(' | ', $logParts));
-            } catch (Throwable $e) {
-                // don't break the API if logging fails
-                error_log('list_transactions logging failed: ' . $e->getMessage());
-            }
-
-            // Additional debug: total rows in transactions table and last 5 entries
-            try {
-                $allCountRows = $db->query("SELECT COUNT(*) as c FROM app_compta_transactions_bancaires", []);
-                $total_transactions = (!empty($allCountRows) && isset($allCountRows[0]['c'])) ? (int)$allCountRows[0]['c'] : null;
-            } catch (Throwable $e) {
-                $total_transactions = null;
-            }
-            try {
-                $lastRows = $db->query("SELECT * FROM app_compta_transactions_bancaires ORDER BY id_transaction DESC LIMIT 5", []);
-                if (!is_array($lastRows)) $lastRows = [];
-            } catch (Throwable $e) {
-                $lastRows = [];
-            }
-
-            // attach to debug
-            $payload['debug']['total_transactions'] = $total_transactions;
-            $payload['debug']['last_rows'] = $lastRows;
-
-            jsonResponse(200, $payload);
+            jsonResponse(200, ['success' => true, 'data' => $rows]);
         }
 
         jsonResponse(404, ['success' => false, 'error' => 'Action GET inconnue']);

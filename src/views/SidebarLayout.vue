@@ -95,15 +95,15 @@
           </button>
 
           <button 
-            :style="getNavItemStyle('produits')" 
+            :style="getNavItemStyle('magasin-produits')" 
             @click="navigateTo(currentMagasinId ? `/magasins/${currentMagasinId}/produits` : '/magasins')"
-            @mouseenter="hoveredNav = 'produits'" 
+            @mouseenter="hoveredNav = 'magasin-produits'" 
             @mouseleave="hoveredNav = null"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/>
             </svg>
-            <span>Produits</span>
+            <span>Produits (magasin)</span>
           </button>
 
           <button 
@@ -204,6 +204,21 @@
               <line x1="14" y1="15" x2="16" y2="15"/>
             </svg>
             <span>Comptabilités</span>
+          </button>
+
+          <!-- Produits - liste globale (admin uniquement) -->
+          <button 
+            v-if="authStore.hasAccessToUsers"
+            :style="getNavItemStyle('produits')" 
+            @click="navigateTo('/produits')"
+            @mouseenter="hoveredNav = 'produits'" 
+            @mouseleave="hoveredNav = null"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/>
+            </svg>
+            <span>Produits</span>
+            <span :style="adminBadgeStyle">Admin</span>
           </button>
 
           <!-- Utilisateurs (admin uniquement) -->
