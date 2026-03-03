@@ -268,6 +268,12 @@ const loadComptes = async () => {
       `${API_BASE_URL}/api_gestion_bancaire.php?action=list_comptes${getUserParams()}${randomParam()}`,
       { headers: getAuthHeaders() }
     )
+    if (res.status === 401) {
+      localStorage.removeItem('token')
+      localStorage.removeItem('isAuthenticated')
+      router.push('/login')
+      return
+    }
     const data = await res.json()
     comptes.value = data.success ? (data.data || []) : []
   } catch (e) {
@@ -288,6 +294,12 @@ const loadTransactions = async () => {
 
     const url = `${API_BASE_URL}/api_gestion_bancaire.php?action=list_transactions${getUserParams()}&${params.toString()}${randomParam()}`
     const res = await fetch(url, { headers: getAuthHeaders() })
+    if (res.status === 401) {
+      localStorage.removeItem('token')
+      localStorage.removeItem('isAuthenticated')
+      router.push('/login')
+      return
+    }
     const data = await res.json()
     const raw = data.success ? (data.data || []) : []
     const isTransactions = raw.length === 0 || ('date_transaction' in (raw[0] || {}) && !('banque' in (raw[0] || {})))
@@ -316,6 +328,12 @@ const loadComptesEtTransactions = async () => {
     // 1) Appel combine (comptes + transactions)
     const urlCombined = `${API_BASE_URL}/api_gestion_bancaire.php?action=list_comptes_et_transactions${baseParams}`
     const resCombined = await fetch(urlCombined, { headers: getAuthHeaders() })
+    if (resCombined.status === 401) {
+      localStorage.removeItem('token')
+      localStorage.removeItem('isAuthenticated')
+      router.push('/login')
+      return
+    }
     const dataCombined = await resCombined.json()
 
     if (dataCombined.success && dataCombined.hasOwnProperty('comptes')) {
@@ -329,6 +347,12 @@ const loadComptesEtTransactions = async () => {
     } else {
       const urlTx = `${API_BASE_URL}/api_gestion_bancaire.php?action=list_transactions${baseParams}`
       const resTx = await fetch(urlTx, { headers: getAuthHeaders() })
+      if (resTx.status === 401) {
+        localStorage.removeItem('token')
+        localStorage.removeItem('isAuthenticated')
+        router.push('/login')
+        return
+      }
       const dataTx = await resTx.json()
       const txList = dataTx.success && Array.isArray(dataTx.data) ? dataTx.data : []
       const isTx = txList.length === 0 || ('date_transaction' in (txList[0] || {}) && !('banque' in (txList[0] || {})))
@@ -387,6 +411,12 @@ const saveTransaction = async () => {
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(payload)
     })
+    if (res.status === 401) {
+      localStorage.removeItem('token')
+      localStorage.removeItem('isAuthenticated')
+      router.push('/login')
+      return
+    }
     const data = await res.json()
     if (!data.success) throw new Error(data.error || data.message || 'Erreur')
     closeModal()
@@ -407,6 +437,12 @@ const deleteTransaction = async (t) => {
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ id_transaction: t.id, user_id: authStore.user?.id, id_entreprise: authStore.user?.id_entreprise })
     })
+    if (res.status === 401) {
+      localStorage.removeItem('token')
+      localStorage.removeItem('isAuthenticated')
+      router.push('/login')
+      return
+    }
     const data = await res.json()
     if (!data.success) throw new Error(data.error || data.message || 'Erreur')
     await loadComptesEtTransactions()

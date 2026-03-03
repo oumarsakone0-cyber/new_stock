@@ -153,10 +153,10 @@ api.interceptors.response.use(
   (error) => {
     if (error.response) {
       if (error.response.status === 401) {
-        // Déconnexion automatique si le token n'est plus valide
         localStorage.removeItem('token');
-        // window.location.href = '/login'; // Décommentez pour rediriger
-        console.warn('Session expirée ou non autorisée');
+        localStorage.removeItem('isAuthenticated');
+        console.warn('Session expirée ou non autorisée – redirection vers la connexion');
+        window.location.href = '/login';
       }
     }
     return Promise.reject(error);

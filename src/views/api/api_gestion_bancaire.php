@@ -128,10 +128,8 @@ try {
     $method = $_SERVER['REQUEST_METHOD'];
     $action = $_GET['action'] ?? '';
 
-    // id_entreprise: priorite aux parametres GET/POST, sinon token JWT
-    $id_entreprise = isset($_GET['id_entreprise']) && $_GET['id_entreprise'] !== '' 
-        ? (int)$_GET['id_entreprise'] 
-        : $auth_id_entreprise;
+    // id_entreprise: toujours depuis l'utilisateur connecte (comme api_clients) pour coherence add/list
+    $id_entreprise = $auth_id_entreprise;
 
     // ===================== GET =====================
     if ($method === 'GET') {
@@ -197,63 +195,61 @@ try {
             }
             unset($r);
 
-            // Requete simple SANS JOIN : la table a des lignes mais le JOIN renvoyait 0 (souvent type/alias MySQL)
-            $sql_t = "SELECT
-                        id_transaction as id,
-                        id_compte,
-                        date_transaction,
-                        sens,
-                        montant,
-                        reference,
-                        libelle,
-                        note,
-                        date_creation
-                    FROM app_compta_transactions_bancaires
-                    WHERE 1=1";
-            $params_t = [];
-            if (!$is_admin && $id_entreprise !== null) {
-                $sql_t .= " AND (id_entreprise = ? OR id_entreprise IS NULL)";
-                $params_t[] = $id_entreprise;
-            }
-            if ($id_compte !== null) {
-                $sql_t .= " AND id_compte = ?";
-                $params_t[] = $id_compte;
-            }
-            if ($sens === 'DEBIT' || $sens === 'CREDIT') {
-                $sql_t .= " AND sens = ?";
-                $params_t[] = $sens;
-            }
-            if ($date_debut !== '') {
-                $sql_t .= " AND date_transaction >= ?";
-                $params_t[] = $date_debut;
-            }
-            if ($date_fin !== '') {
-                $sql_t .= " AND date_transaction <= ?";
-                $params_t[] = $date_fin;
-            }
-            if ($search !== '') {
-                $sql_t .= " AND (reference LIKE ? OR libelle LIKE ? OR note LIKE ?)";
-                $like = '%' . $search . '%';
-                $params_t[] = $like;
-                $params_t[] = $like;
-                $params_t[] = $like;
-            }
-            $sql_t .= " ORDER BY date_transaction DESC, id_transaction DESC";
-            try {
-                $transactions = $db->query($sql_t, $params_t);
-            } catch (Throwable $e) {
-                error_log("list_comptes_et_transactions: " . $e->getMessage());
-                $transactions = [];
+            // Transactions : partir des comptes deja retournes (ids) pour eviter tout decalage filtre
+            $compte_ids = array_column($comptes, 'id');
+            $transactions = [];
+            if (!empty($compte_ids)) {
+                $placeholders = implode(',', array_fill(0, count($compte_ids), '?'));
+                $sql_t = "SELECT
+                        t.id_transaction as id,
+                        t.id_compte,
+                        t.date_transaction,
+                        t.sens,
+                        t.montant,
+                        t.reference,
+                        t.libelle,
+                        t.note,
+                        t.date_creation,
+                        c.nom_compte as compte_nom
+                    FROM app_compta_transactions_bancaires t
+                    INNER JOIN app_compta_comptes_bancaires c ON c.id_compte = t.id_compte
+                    WHERE t.id_compte IN ($placeholders)";
+                $params_t = array_values($compte_ids);
+                if ($id_compte !== null && in_array($id_compte, $compte_ids, true)) {
+                    $sql_t .= " AND t.id_compte = ?";
+                    $params_t[] = $id_compte;
+                }
+                if ($sens === 'DEBIT' || $sens === 'CREDIT') {
+                    $sql_t .= " AND t.sens = ?";
+                    $params_t[] = $sens;
+                }
+                if ($date_debut !== '') {
+                    $sql_t .= " AND t.date_transaction >= ?";
+                    $params_t[] = $date_debut;
+                }
+                if ($date_fin !== '') {
+                    $sql_t .= " AND t.date_transaction <= ?";
+                    $params_t[] = $date_fin;
+                }
+                if ($search !== '') {
+                    $sql_t .= " AND (t.reference LIKE ? OR t.libelle LIKE ? OR t.note LIKE ?)";
+                    $like = '%' . $search . '%';
+                    $params_t[] = $like;
+                    $params_t[] = $like;
+                    $params_t[] = $like;
+                }
+                $sql_t .= " ORDER BY t.date_transaction DESC, t.id_transaction DESC";
+                try {
+                    $transactions = $db->query($sql_t, $params_t);
+                } catch (Throwable $e) {
+                    error_log("list_comptes_et_transactions transactions: " . $e->getMessage());
+                    $transactions = [];
+                }
             }
             if (!is_array($transactions)) $transactions = [];
-            // Associer le nom du compte depuis la liste des comptes deja chargee
-            $comptesById = [];
-            foreach ($comptes as $c) {
-                $comptesById[(int)($c['id'] ?? 0)] = $c['nom_compte'] ?? '--';
-            }
             foreach ($transactions as &$r) {
                 $r['montant'] = (float)($r['montant'] ?? 0);
-                $r['compte_nom'] = $comptesById[(int)($r['id_compte'] ?? 0)] ?? '--';
+                if (empty($r['compte_nom'])) $r['compte_nom'] = '--';
             }
             unset($r);
 
@@ -271,48 +267,50 @@ try {
             $sens = getStr($_GET['sens'] ?? '');
             $search = getStr($_GET['search'] ?? '');
 
-            // Meme requete simple SANS JOIN que list_comptes_et_transactions (le JOIN renvoyait 0 ligne)
+            // Meme logique : JOIN comptes pour filtrer par entreprise
             $sql = "SELECT
-                        id_transaction as id,
-                        id_compte,
-                        date_transaction,
-                        sens,
-                        montant,
-                        reference,
-                        libelle,
-                        note,
-                        date_creation
-                    FROM app_compta_transactions_bancaires
+                        t.id_transaction as id,
+                        t.id_compte,
+                        t.date_transaction,
+                        t.sens,
+                        t.montant,
+                        t.reference,
+                        t.libelle,
+                        t.note,
+                        t.date_creation,
+                        c.nom_compte as compte_nom
+                    FROM app_compta_transactions_bancaires t
+                    INNER JOIN app_compta_comptes_bancaires c ON c.id_compte = t.id_compte
                     WHERE 1=1";
             $params = [];
             if (!$is_admin && $id_entreprise !== null) {
-                $sql .= " AND (id_entreprise = ? OR id_entreprise IS NULL)";
+                $sql .= " AND (c.id_entreprise = ? OR c.id_entreprise IS NULL)";
                 $params[] = $id_entreprise;
             }
             if ($id_compte !== null) {
-                $sql .= " AND id_compte = ?";
+                $sql .= " AND t.id_compte = ?";
                 $params[] = $id_compte;
             }
             if ($sens === 'DEBIT' || $sens === 'CREDIT') {
-                $sql .= " AND sens = ?";
+                $sql .= " AND t.sens = ?";
                 $params[] = $sens;
             }
             if ($date_debut !== '') {
-                $sql .= " AND date_transaction >= ?";
+                $sql .= " AND t.date_transaction >= ?";
                 $params[] = $date_debut;
             }
             if ($date_fin !== '') {
-                $sql .= " AND date_transaction <= ?";
+                $sql .= " AND t.date_transaction <= ?";
                 $params[] = $date_fin;
             }
             if ($search !== '') {
-                $sql .= " AND (reference LIKE ? OR libelle LIKE ? OR note LIKE ?)";
+                $sql .= " AND (t.reference LIKE ? OR t.libelle LIKE ? OR t.note LIKE ?)";
                 $like = '%' . $search . '%';
                 $params[] = $like;
                 $params[] = $like;
                 $params[] = $like;
             }
-            $sql .= " ORDER BY date_transaction DESC, id_transaction DESC";
+            $sql .= " ORDER BY t.date_transaction DESC, t.id_transaction DESC";
             try {
                 $rows = $db->query($sql, $params);
             } catch (Throwable $e) {
@@ -320,20 +318,9 @@ try {
                 $rows = [];
             }
             if (!is_array($rows)) $rows = [];
-            // Nom du compte : charger la liste des comptes et associer en PHP
-            $comptesList = [];
-            try {
-                $comptesList = $db->query("SELECT id_compte, nom_compte FROM app_compta_comptes_bancaires", []);
-            } catch (Throwable $e) {
-                $comptesList = [];
-            }
-            $comptesById = [];
-            foreach (is_array($comptesList) ? $comptesList : [] as $c) {
-                $comptesById[(int)($c['id_compte'] ?? 0)] = $c['nom_compte'] ?? '--';
-            }
             foreach ($rows as &$r) {
                 $r['montant'] = (float)($r['montant'] ?? 0);
-                $r['compte_nom'] = $comptesById[(int)($r['id_compte'] ?? 0)] ?? '--';
+                if (empty($r['compte_nom'])) $r['compte_nom'] = '--';
             }
             unset($r);
             jsonResponse(200, ['success' => true, 'data' => $rows]);
