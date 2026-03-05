@@ -1,5 +1,6 @@
+
 <template>
-  <SidebarLayout currentPage="produits" :magasinId="magasinId">
+  <SidebarLayout currentPage="produits" :magasinId="magasinId" @navigate="handleSidebarNavigate">
     <!-- Loading State -->
     <div v-if="loading" :style="loadingStyle">
       <div :style="spinnerStyle"></div>
@@ -139,15 +140,25 @@
         <form @submit.prevent="saveProduit" :style="formStyle">
           <div :style="formRowStyle">
             <div :style="formGroupStyle">
-              <label :style="labelStyle">Nom du produit *</label>
-              <input v-model="formData.nom" type="text" :style="inputStyle" required />
+              <label :style="labelStyle">Produit *</label>
+              <select v-model="formData.id_produit" :style="inputStyle" required @change="onProduitSelect">
+                <option value="">Sélectionner un produit</option>
+                <option v-for="prod in produitsGlobaux" :key="prod.id" :value="prod.id">
+                  {{ prod.nom }} (SKU: {{ prod.sku || 'N/A' }})
+                </option>
+              </select>
             </div>
             <div :style="formGroupStyle">
-              <label :style="labelStyle">SKU (auto-generee)</label>
+              <label :style="labelStyle">Nom du produit</label>
+              <input v-model="formData.nom" type="text" :style="inputStyle" readonly />
+            </div>
+            <div :style="formGroupStyle">
+              <label :style="labelStyle">SKU (auto-généré)</label>
               <input v-model="formData.sku" type="text" :style="{ ...inputStyle, backgroundColor: '#f8fafc', color: '#64748b' }" readonly />
             </div>
           </div>
-          
+
+
           <div :style="formRowStyle">
             <div :style="formGroupStyle">
               <label :style="labelStyle">Catégorie</label>
@@ -237,101 +248,150 @@
 </template>
 
 <script setup>
+import { getMagasin } from '../../services/api.js'
+import SidebarLayout from '../../components/SidebarLayout.vue'
+import { computed } from 'vue'
 
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+
+const filteredProduits = computed(() => {
+  let list = produits.value
+  if (filterCategory.value) {
+    list = list.filter(p => p.categorie === filterCategory.value)
+  }
+  if (searchQuery.value) {
+    const q = searchQuery.value.toLowerCase()
+    list = list.filter(p =>
+      (p.nom && p.nom.toLowerCase().includes(q)) ||
+      (p.sku && p.sku.toLowerCase().includes(q))
+    )
+  }
+  return list
+})
+import { ref, reactive, onMounted } from 'vue'
+
 import { useRouter, useRoute } from 'vue-router'
-import SidebarLayout from '../SidebarLayout.vue'
-import { getMagasin, getMagasins } from '../../services/api.js'
-import api from '../../services/api.js'
+
+
 
 const router = useRouter()
 const route = useRoute()
+const magasinId = ref(route.params.id)
 
-const magasinId = computed(() => route.params.id)
-const magasin = ref({ id: magasinId.value, nom: 'Chargement...' })
+function goBack() {
+  router.back();
+}
 
-const goBack = () => router.push(`/magasins/${magasinId.value}`)
-
-const searchQuery = ref('')
+function handleSidebarNavigate({ page }) {
+  if (page === 'magasins') router.push('/magasins')
+  else if (page === 'produits') router.push(`/magasins/${magasinId.value}/produits`)
+  else if (page === 'stock') router.push(`/magasins/${magasinId.value}/stock`)
+  else if (page === 'ventes') router.push(`/magasins/${magasinId.value}/ventes`)
+  else if (page === 'clients') router.push('/clients')
+  else if (page === 'fournisseurs') router.push('/fournisseurs')
+  // Ajoute d'autres routes selon tes besoins
+}
+const magasin = ref({})
+const produits = ref([])
+const produitsGlobaux = ref([])
+const categories = ref([])
 const filterCategory = ref('')
+const searchQuery = ref('')
 const showModal = ref(false)
-const editingProduit = ref(null)
+const showCategoryModal = ref(false)
+const error = ref(null)
 const loading = ref(false)
 const saving = ref(false)
-const error = ref(null)
-
-const categories = ref([])
-const showCategoryModal = ref(false)
 const savingCategory = ref(false)
+const editingProduit = ref(null)
+
+const formData = reactive({
+  id_produit: '',
+  prix_vente: 0,
+  prix_achat: 0,
+  stock: 0,
+  seuil_alerte: 10,
+  description: ''
+})
 
 const categoryFormData = reactive({
   nom: '',
   description: ''
 })
 
-const produits = ref([])
-
-const formData = reactive({
-  nom: '',
-  sku: '',
-  categorie: '',
-  prix_vente: 0,
-  prix_achat: 0,
-  stock_actuel: 0,
-  seuil_alerte: 10,
-  description: ''
-})
-
-const filteredProduits = computed(() => {
-  return produits.value.filter(p => {
-    const matchSearch = p.nom.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-                       (p.sku && p.sku.toLowerCase().includes(searchQuery.value.toLowerCase()))
-    const matchCategory = !filterCategory.value || p.categorie === filterCategory.value
-    return matchSearch && matchCategory
-  })
-})
-
-const formatMoney = (amount) => new Intl.NumberFormat('fr-FR', { style: 'decimal', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount || 0) + ' FCFA'
-
-// Génération automatique du SKU : 2 premières lettres + dernière lettre + 5 chiffres aléatoires
-const generateSku = (nom) => {
-  if (!nom || nom.trim().length < 2) return ''
-  const clean = nom.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
-  if (clean.length < 2) return ''
-  const prefix = clean.substring(0, 2)
-  const last = clean.charAt(clean.length - 1)
-  const random = Math.floor(10000 + Math.random() * 90000) // 5 chiffres (10000-99999)
-  return `${prefix}${last}${random}`
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('token')
+  return token ? { 'Authorization': 'Bearer ' + token } : {}
 }
 
-// Auto-générer le SKU quand le nom change (seulement en mode création)
-watch(() => formData.nom, (newNom) => {
-  if (!editingProduit.value) {
-    formData.sku = generateSku(newNom)
-  }
-})
-
-// API Functions
-const loadMagasinInfo = async () => {
+const loadProduitsGlobaux = async () => {
   try {
-    const { data } = await getMagasin(magasinId.value)
+    const res = await fetch('/api/api_produit.php?action=list', {
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      }
+    })
+    const data = await res.json()
     if (data.success) {
-      magasin.value = data.data
-      // Recharger les catégories avec le bon user_id
-      loadCategories()
+      produitsGlobaux.value = (data.data || []).map(p => ({
+        id: p.id_produit || p.id,
+        nom: p.libelle,
+        sku: p.sku,
+        prix_achat: p.prix_achat,
+        prix_vente: p.prix_vente,
+        description: p.description
+      }))
     }
   } catch (err) {
-    console.error('Erreur chargement magasin:', err)
+    console.error('Erreur chargement produits globaux:', err)
   }
 }
+// Formattage des montants en XOF
+function formatMoney(value) {
+  if (typeof value !== 'number') value = Number(value)
+  return value ? value.toLocaleString('fr-FR', { style: 'currency', currency: 'XOF' }) : '0 F'
+}
+
+// Sélection d'un produit global : auto-remplit les champs liés
+function onProduitSelect() {
+  const prod = produitsGlobaux.value.find(p => p.id == formData.id_produit)
+  if (prod) {
+    formData.nom = prod.nom
+    formData.sku = prod.sku
+    formData.prix_achat = prod.prix_achat
+    formData.description = prod.description
+  } else {
+    formData.nom = ''
+    formData.sku = ''
+    formData.prix_achat = 0
+    formData.description = ''
+  }
+}
+
 
 const loadProduits = async () => {
   loading.value = true
   error.value = null
   try {
-    const { data } = await api.get('api_produits.php?action=list', { params: { magasin_id: magasinId.value, _: Date.now() } })
+    const res = await fetch(`/api/api_magasin_produits.php?action=list&magasin_id=${magasinId.value}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      }
+    })
+    const data = await res.json()
     if (data.success) {
-      produits.value = data.data
+      produits.value = (data.data || []).map(p => ({
+        id: p.id_magasin_produit || p.id,
+        id_produit: p.id_produit,
+        nom: p.produit_nom,
+        sku: p.sku,
+        prix_vente: p.prix_vente,
+        prix_achat: p.prix_achat_ref,
+        stock: p.stock,
+        seuil_alerte: p.seuil_alerte,
+        description: p.description
+      }))
     } else {
       error.value = data.error || 'Erreur lors du chargement des produits'
     }
@@ -343,11 +403,26 @@ const loadProduits = async () => {
   }
 }
 
-// Catégories API
+const loadMagasinInfo = async () => {
+  try {
+    const { data } = await getMagasin(magasinId.value)
+    if (data.success) {
+      magasin.value = data.data
+    }
+  } catch (err) {
+    console.error('Erreur chargement magasin:', err)
+  }
+}
+
 const loadCategories = async () => {
   try {
-    const userId = magasin.value.user_id || 3
-    const { data } = await api.get('api_categories.php?action=list', { params: { user_id: userId, _: Date.now() } })
+    const res = await fetch('/api/api_produit.php?action=list_categories', {
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      }
+    })
+    const data = await res.json()
     if (data.success) {
       categories.value = data.data
     }
@@ -356,30 +431,17 @@ const loadCategories = async () => {
   }
 }
 
-const saveCategorie = async () => {
-  savingCategory.value = true
-  try {
-    const userId = magasin.value.user_id || 3
-    const payload = {
-      user_id: userId,
-      magasin_id: magasinId.value,
-      nom: categoryFormData.nom,
-      description: categoryFormData.description
-    }
-    const { data } = await api.post('api_categories.php?action=add', payload)
-    if (data.success) {
-      await loadCategories()
-      formData.categorie = categoryFormData.nom
-      closeCategoryModal()
-    } else {
-      alert(data.error || 'Erreur lors de la création de la catégorie')
-    }
-  } catch (err) {
-    alert('Erreur de connexion au serveur')
-    console.error('Erreur:', err)
-  } finally {
-    savingCategory.value = false
-  }
+const closeModal = () => {
+  showModal.value = false
+  editingProduit.value = null
+  Object.assign(formData, {
+    id_produit: '',
+    prix_vente: 0,
+    prix_achat: 0,
+    stock: 0,
+    seuil_alerte: 10,
+    description: ''
+  })
 }
 
 const closeCategoryModal = () => {
@@ -394,16 +456,28 @@ const saveProduit = async () => {
   saving.value = true
   try {
     const payload = {
-      ...formData,
-      magasin_id: magasinId.value
+      id_magasin: magasinId.value,
+      id_produit: formData.id_produit,
+      stock: formData.stock,
+      prix_vente: formData.prix_vente,
+      seuil_alerte: formData.seuil_alerte
     }
+    let res, data
     if (editingProduit.value) {
       payload.id = editingProduit.value.id
-      delete payload.stock_actuel
-      var { data } = await api.post('api_produits.php?action=update', payload)
+      res = await fetch('/api/api_magasin_produits.php?action=update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify(payload)
+      })
     } else {
-      var { data } = await api.post('api_produits.php?action=add', payload)
+      res = await fetch('/api/api_magasin_produits.php?action=add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify(payload)
+      })
     }
+    data = await res.json()
     if (data.success) {
       await loadProduits()
       closeModal()
@@ -421,14 +495,12 @@ const saveProduit = async () => {
 const editProduit = (produit) => {
   editingProduit.value = produit
   Object.assign(formData, {
-    nom: produit.nom,
-    sku: produit.sku || '',
-    categorie: produit.categorie || '',
+    id_produit: produit.id_produit,
     prix_vente: produit.prix_vente,
-    prix_achat: produit.prix_achat || 0,
-    stock_actuel: produit.stock_actuel,
-    seuil_alerte: produit.seuil_alerte || 10,
-    description: produit.description || ''
+    prix_achat: produit.prix_achat,
+    stock: produit.stock,
+    seuil_alerte: produit.seuil_alerte,
+    description: produit.description
   })
   showModal.value = true
 }
@@ -436,7 +508,12 @@ const editProduit = (produit) => {
 const deleteProduit = async (id) => {
   if (!confirm('Êtes-vous sûr de vouloir supprimer ce produit ?')) return
   try {
-    const { data } = await api.post('api_produits.php?action=delete', { id })
+    const res = await fetch('/api/api_magasin_produits.php?action=delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify({ id })
+    })
+    const data = await res.json()
     if (data.success) {
       await loadProduits()
     } else {
@@ -448,20 +525,49 @@ const deleteProduit = async (id) => {
   }
 }
 
-const closeModal = () => {
-  showModal.value = false
-  editingProduit.value = null
-  Object.assign(formData, {
-    nom: '',
-    sku: '',
-    categorie: '',
-    prix_vente: 0,
-    prix_achat: 0,
-    stock_actuel: 0,
-    seuil_alerte: 10,
-    description: ''
-  })
+const saveCategorie = async () => {
+  savingCategory.value = true
+  try {
+    const payload = {
+      magasin_id: magasinId.value,
+      nom: categoryFormData.nom,
+      description: categoryFormData.description
+    }
+    const res = await fetch('/api/api_categories.php?action=add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify(payload)
+    })
+    const data = await res.json()
+    if (data.success) {
+      await loadCategories()
+      formData.categorie = categoryFormData.nom
+      closeCategoryModal()
+    } else {
+      alert(data.error || 'Erreur lors de la création de la catégorie')
+    }
+  } catch (err) {
+    alert('Erreur de connexion au serveur')
+    console.error('Erreur:', err)
+  } finally {
+    savingCategory.value = false
+  }
 }
+
+onMounted(() => {
+  loadMagasinInfo()
+  loadProduits()
+  loadCategories()
+  loadProduitsGlobaux()
+})
+
+
+
+
+
+
+
+
 
 // Load data on mount
 onMounted(() => {

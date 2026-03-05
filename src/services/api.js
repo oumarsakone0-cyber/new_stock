@@ -1,3 +1,23 @@
+// --- Gestion du stock magasin ---
+export function getEtatStock(magasin_id) {
+  return api.get('api_magasins.php?action=etat_stock', { params: { magasin_id } });
+}
+
+export function getMouvementsStock(magasin_id) {
+  return api.get('api_magasins.php?action=mouvements_stock', { params: { magasin_id } });
+}
+
+export function getStatsStock(magasin_id) {
+  return api.get('api_magasins.php?action=stats_stock', { params: { magasin_id } });
+}
+
+export function entreeStock(payload) {
+  return api.post('api_magasins.php?action=entree_stock', payload);
+}
+
+export function sortieStock(payload) {
+  return api.post('api_magasins.php?action=sortie_stock', payload);
+}
 // Clôturer la journée d'un point de vente
 export const cloturerJourneePdv = (payload) => {
   return api.post('api_points_vente.php?action=cloture_journee', payload);
@@ -99,7 +119,7 @@ export const updatePointVente = (payload) => {
 
 // Supprimer un point de vente
 export const deletePointVente = (id_pdv) => {
-  return api.post('api_points_vente.php?action=delete', { id_pdv });
+  return api.post(`api_points_vente.php?action=delete&id_pdv=${id_pdv}`);
 };
 // Statistiques globales clients
 export const getStatsGlobal = (params = {}) => {

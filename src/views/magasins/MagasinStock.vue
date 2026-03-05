@@ -223,12 +223,12 @@
         <form @submit.prevent="saveMovement" :style="formStyle">
           <div :style="formGroupStyle">
             <label :style="labelStyle">Produit *</label>
-            <select v-model="formData.produit_id" :style="inputStyle" required>
-              <option value="">Sélectionner un produit</option>
-              <option v-for="p in produits" :key="p.id" :value="p.id">
-                {{ p.nom }} (Stock: {{ p.stock_actuel }})
-              </option>
-            </select>
+              <select v-model="formData.produit_id" :style="inputStyle" required>
+                <option value="">Sélectionner un produit</option>
+                <option v-for="p in produits" :key="p.id_produit || p.id" :value="p.id_produit || p.id">
+                  {{ p.libelle }} (SKU: {{ p.sku }})
+                </option>
+              </select>
           </div>
           
           <div :style="formGroupStyle">
@@ -282,6 +282,9 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import SidebarLayout from '../SidebarLayout.vue'
 import StockRapportPeriode from './StockRapportPeriode.vue'
+
+// Correction warning : déclaration de l'URL de base de l'API
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/';
 
 const router = useRouter()
 const route = useRoute()
@@ -347,7 +350,7 @@ const loadMagasinInfo = async () => {
 
 const loadEtatStock = async () => {
   try {
-    const { data } = await api.get('api_stock.php?action=etat', { params: { magasin_id: magasinId.value } })
+    const { data } = await api.get('api_magasins.php?action=etat_stock', { params: { magasin_id: magasinId.value } })
     if (data.success) {
       produits.value = data.data || []
     } else {
@@ -361,7 +364,7 @@ const loadEtatStock = async () => {
 
 const loadMouvements = async () => {
   try {
-    const { data } = await api.get('api_stock.php?action=mouvements', { params: { magasin_id: magasinId.value } })
+    const { data } = await api.get('api_magasins.php?action=mouvements_stock', { params: { magasin_id: magasinId.value } })
     if (data.success) {
       mouvements.value = data.data || []
     } else {
@@ -375,7 +378,7 @@ const loadMouvements = async () => {
 
 const loadStats = async () => {
   try {
-    const { data } = await api.get('api_stock.php?action=stats', { params: { magasin_id: magasinId.value } })
+    const { data } = await api.get('api_magasins.php?action=stats_stock', { params: { magasin_id: magasinId.value } })
     if (data.success) {
       stats.value = data.data || stats.value
     } else {
@@ -433,7 +436,7 @@ const saveMovement = async () => {
       notes: formData.notes,
       utilisateur: 'Admin'
     }
-    const { data } = await api.post(`api_stock.php?action=${action}`, payload)
+    const { data } = await api.post(`api_magasins.php?action=${action === 'entree' ? 'entree_stock' : 'sortie_stock'}`, payload)
     if (data.success) {
       alert(data.message || 'Mouvement enregistré avec succès')
       closeModal()
