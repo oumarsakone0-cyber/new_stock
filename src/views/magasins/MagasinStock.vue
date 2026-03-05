@@ -286,8 +286,8 @@ import StockRapportPeriode from './StockRapportPeriode.vue'
 const router = useRouter()
 const route = useRoute()
 
-// API Configuration
-const API_BASE_URL = 'https://sogetrag.com/apistok'
+
+import api from '../../services/api.js'
 
 // State
 const magasinId = computed(() => route.params.id)
@@ -336,9 +336,7 @@ const formatDate = (dateString) => {
 
 const loadMagasinInfo = async () => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api_magasins.php?action=details&id=${magasinId.value}`)
-    const data = await response.json()
-    
+    const { data } = await api.get('api_magasins.php?action=get', { params: { id: magasinId.value } })
     if (data.success && data.data) {
       magasin.value = data.data
     }
@@ -349,9 +347,7 @@ const loadMagasinInfo = async () => {
 
 const loadEtatStock = async () => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api_stock.php?action=etat&magasin_id=${magasinId.value}`)
-    const data = await response.json()
-    
+    const { data } = await api.get('api_stock.php?action=etat', { params: { magasin_id: magasinId.value } })
     if (data.success) {
       produits.value = data.data || []
     } else {
@@ -365,9 +361,7 @@ const loadEtatStock = async () => {
 
 const loadMouvements = async () => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api_stock.php?action=mouvements&magasin_id=${magasinId.value}`)
-    const data = await response.json()
-    
+    const { data } = await api.get('api_stock.php?action=mouvements', { params: { magasin_id: magasinId.value } })
     if (data.success) {
       mouvements.value = data.data || []
     } else {
@@ -381,9 +375,7 @@ const loadMouvements = async () => {
 
 const loadStats = async () => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api_stock.php?action=stats&magasin_id=${magasinId.value}`)
-    const data = await response.json()
-    
+    const { data } = await api.get('api_stock.php?action=stats', { params: { magasin_id: magasinId.value } })
     if (data.success) {
       stats.value = data.data || stats.value
     } else {
@@ -431,26 +423,17 @@ const closeModal = () => {
 
 const saveMovement = async () => {
   saving.value = true
-  
   try {
     const action = modalType.value === 'entree' ? 'entree' : 'sortie'
-    const response = await fetch(`${API_BASE_URL}/api_stock.php?action=${action}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        produit_id: formData.produit_id,
-        magasin_id: magasinId.value,
-        quantite: formData.quantite,
-        motif: formData.motif,
-        notes: formData.notes,
-        utilisateur: 'Admin'
-      })
-    })
-    
-    const data = await response.json()
-    
+    const payload = {
+      produit_id: formData.produit_id,
+      magasin_id: magasinId.value,
+      quantite: formData.quantite,
+      motif: formData.motif,
+      notes: formData.notes,
+      utilisateur: 'Admin'
+    }
+    const { data } = await api.post(`api_stock.php?action=${action}`, payload)
     if (data.success) {
       alert(data.message || 'Mouvement enregistré avec succès')
       closeModal()

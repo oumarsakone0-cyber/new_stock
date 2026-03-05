@@ -237,14 +237,15 @@
 </template>
 
 <script setup>
+
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import SidebarLayout from '../SidebarLayout.vue'
+import { getMagasin, getMagasins } from '../../services/api.js'
+import api from '../../services/api.js'
 
 const router = useRouter()
 const route = useRoute()
-
-const API_BASE_URL = 'https://sogetrag.com/apistok'
 
 const magasinId = computed(() => route.params.id)
 const magasin = ref({ id: magasinId.value, nom: 'Chargement...' })
@@ -313,8 +314,7 @@ watch(() => formData.nom, (newNom) => {
 // API Functions
 const loadMagasinInfo = async () => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api_magasins.php?action=details&id=${magasinId.value}`)
-    const data = await response.json()
+    const { data } = await getMagasin(magasinId.value)
     if (data.success) {
       magasin.value = data.data
       // Recharger les catégories avec le bon user_id
@@ -328,14 +328,8 @@ const loadMagasinInfo = async () => {
 const loadProduits = async () => {
   loading.value = true
   error.value = null
-  
   try {
-    const cacheBuster = Date.now() // ou Math.random()
-    const response = await fetch(
-      `${API_BASE_URL}/api_produits.php?action=list&magasin_id=${magasinId.value}&_=${cacheBuster}`
-    )
-    const data = await response.json()
-    
+    const { data } = await api.get('api_produits.php?action=list', { params: { magasin_id: magasinId.value, _: Date.now() } })
     if (data.success) {
       produits.value = data.data
     } else {
@@ -353,12 +347,7 @@ const loadProduits = async () => {
 const loadCategories = async () => {
   try {
     const userId = magasin.value.user_id || 3
-    const cacheBuster = Date.now()
-    const response = await fetch(
-      `${API_BASE_URL}/api_categories.php?action=list&user_id=${userId}&_=${cacheBuster}`
-    )
-    const data = await response.json()
-    
+    const { data } = await api.get('api_categories.php?action=list', { params: { user_id: userId, _: Date.now() } })
     if (data.success) {
       categories.value = data.data
     }
@@ -369,7 +358,6 @@ const loadCategories = async () => {
 
 const saveCategorie = async () => {
   savingCategory.value = true
-  
   try {
     const userId = magasin.value.user_id || 3
     const payload = {
@@ -378,18 +366,9 @@ const saveCategorie = async () => {
       nom: categoryFormData.nom,
       description: categoryFormData.description
     }
-    
-    const response = await fetch(`${API_BASE_URL}/api_categories.php?action=add`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    })
-    
-    const data = await response.json()
-    
+    const { data } = await api.post('api_categories.php?action=add', payload)
     if (data.success) {
       await loadCategories()
-      // Sélectionner automatiquement la nouvelle catégorie dans le formulaire produit
       formData.categorie = categoryFormData.nom
       closeCategoryModal()
     } else {
@@ -413,31 +392,18 @@ const closeCategoryModal = () => {
 
 const saveProduit = async () => {
   saving.value = true
-  
   try {
-    const url = editingProduit.value
-      ? `${API_BASE_URL}/api_produits.php?action=update`
-      : `${API_BASE_URL}/api_produits.php?action=add`
-    
     const payload = {
       ...formData,
       magasin_id: magasinId.value
     }
-    
     if (editingProduit.value) {
       payload.id = editingProduit.value.id
-      // Ne pas envoyer stock_actuel lors de la modification
       delete payload.stock_actuel
+      var { data } = await api.post('api_produits.php?action=update', payload)
+    } else {
+      var { data } = await api.post('api_produits.php?action=add', payload)
     }
-    
-    const response = await fetch(url, {
-      method: editingProduit.value ? 'PUT' : 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    })
-    
-    const data = await response.json()
-    
     if (data.success) {
       await loadProduits()
       closeModal()
@@ -469,14 +435,8 @@ const editProduit = (produit) => {
 
 const deleteProduit = async (id) => {
   if (!confirm('Êtes-vous sûr de vouloir supprimer ce produit ?')) return
-  
   try {
-    const response = await fetch(`${API_BASE_URL}/api_produits.php?action=delete&id=${id}`, {
-      method: 'DELETE'
-    })
-    
-    const data = await response.json()
-    
+    const { data } = await api.post('api_produits.php?action=delete', { id })
     if (data.success) {
       await loadProduits()
     } else {

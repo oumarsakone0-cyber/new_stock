@@ -227,7 +227,6 @@
       <!-- Loading State -->
       <VentesFilterExport 
         :magasinId="magasinId"
-        :apiBaseUrl="API_BASE_URL"
         @filter-applied="handleFilterApplied"
       />
       <div v-if="loading" :style="loadingContainerStyle">
@@ -425,7 +424,7 @@
                       <button v-if="vente.statut !== 'Paye'" :style="actionButtonStyle('#10b981')" @click="openPaymentModal(vente)" title="Encaisser">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
                       </button>
-                      <ReceiptPDFButton :vente="vente" :magasinInfo="magasin" />
+                      <ReceiptPDFButton v-if="vente && typeof vente === 'object'" :vente="vente" :magasinInfo="magasin" />
                       <button :style="actionButtonStyle('#3b82f6')" @click="viewVente(vente)" title="Détails">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                       </button>
@@ -560,7 +559,8 @@
         </Transition>
       </div>
 
-      <ReceiptPDFButton :vente="vente" :magasinInfo="magasin" />
+      <!-- Correction : vente non défini -->
+      <ReceiptPDFButton v-if="selectedVente && typeof selectedVente === 'object'" :vente="selectedVente" :magasinInfo="magasin" />
     </template>
   </SidebarLayout>
 </template>
@@ -572,12 +572,10 @@ import ExportCreditsPDFButton from './ExportCreditsPDFButton.vue'
 import SidebarLayout from '../SidebarLayout.vue'
 import VentesFilterExport from './VentesFilterExport.vue'
 import ReceiptPDFButton from './ReceiptPDFButton.vue'
+import { getApiBaseUrl, fetchMagasin, fetchProduits, fetchVentes, fetchVenteDetails, fetchVentesStats, fetchCredits, addVente, paiementVente } from '../../services/api.js'
 
 const router = useRouter()
 const route = useRoute()
-
-// API Configuration
-const API_BASE_URL = 'https://sogetrag.com/apistok'
 
 // State
 const magasinId = computed(() => route.params.id)
@@ -661,51 +659,55 @@ const handleFilterApplied = (rapportData) => {
 
 // ========== API Functions ==========
 const loadMagasinInfo = async () => {
+  const id = magasinId.value;
+  if (!id || isNaN(Number(id))) {
+    console.error('ID magasin invalide:', id);
+    return;
+  }
   try {
-    const response = await fetch(`${API_BASE_URL}/api_magasins.php?action=details&id=${magasinId.value}&_=${Math.random()}`)
-    const data = await response.json()
-    if (data.success) {
-      magasin.value = data.data
+    const data = await fetchMagasin(id);
+    if (data.success && data.data) {
+      magasin.value = data.data;
+    } else {
+      error.value = data.error || 'Magasin non trouvé';
     }
   } catch (err) {
-    console.error('Erreur chargement magasin:', err)
+    console.error('Erreur chargement magasin:', err);
   }
+}
+// Ajout d'une variable pour la vente sélectionnée
+const selectedVente = ref(null)
+
+// Fonction pour sélectionner une vente
+const viewVente = (vente) => {
+  selectedVente.value = vente
 }
 
 const loadProduits = async () => {
   try {
-    const response = await fetch(
-      `${API_BASE_URL}/api_produits.php?action=list&magasin_id=${magasinId.value}&_=${Math.random()}`
-    )
-    const data = await response.json()
+    const data = await fetchProduits(magasinId.value);
     if (data.success) {
       availableProducts.value = data.data.map(p => ({
         id: p.id,
         nom: p.nom,
         prix: parseFloat(p.prix_vente),
         stock: p.stock_actuel
-      }))
+      }));
     }
   } catch (err) {
-    console.error('Erreur chargement produits:', err)
+    console.error('Erreur chargement produits:', err);
   }
 }
 
 const loadVentes = async () => {
-  loading.value = true
-  error.value = null
+  loading.value = true;
+  error.value = null;
   try {
-    const response = await fetch(
-      `${API_BASE_URL}/api_ventes.php?action=list&magasin_id=${magasinId.value}&_=${Math.random()}`
-    )
-    const data = await response.json()
+    const data = await fetchVentes(magasinId.value);
     if (data.success) {
       const ventesAvecDetails = await Promise.all(
         data.data.map(async (v) => {
-          const detailsResponse = await fetch(
-            `${API_BASE_URL}/api_ventes.php?action=details&id=${v.id}&_=${Math.random()}`
-          )
-          const detailsData = await detailsResponse.json()
+          const detailsData = await fetchVenteDetails(v.id);
           return {
             id: v.id,
             client_nom: v.client_nom,
@@ -718,39 +720,35 @@ const loadVentes = async () => {
             paye: parseFloat(v.montant_paye),
             statut: v.statut,
             lignes: detailsData.success ? detailsData.data.lignes : []
-          }
+          };
         })
-      )
-      ventes.value = ventesAvecDetails
+      );
+      ventes.value = ventesAvecDetails;
     } else {
-      error.value = data.error || 'Erreur lors du chargement des ventes'
+      error.value = data.error || 'Erreur lors du chargement des ventes';
     }
   } catch (err) {
-    error.value = 'Impossible de se connecter au serveur'
-    console.error('Erreur:', err)
+    error.value = 'Impossible de se connecter au serveur';
+    console.error('Erreur:', err);
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
 
 const loadStats = async () => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api_ventes.php?action=stats&magasin_id=${magasinId.value}&_=${Math.random()}`)
-    const data = await response.json()
+    const data = await fetchVentesStats(magasinId.value);
     if (data.success) {
-      stats.value = data.data
+      stats.value = data.data;
     }
   } catch (err) {
-    console.error('Erreur chargement stats:', err)
+    console.error('Erreur chargement stats:', err);
   }
 }
 
 const loadCredits = async () => {
   try {
-    const response = await fetch(
-      `${API_BASE_URL}/api_credits.php?action=list&magasin_id=${magasinId.value}&statut=Actif&_=${Math.random()}`
-    )
-    const data = await response.json()
+    const data = await fetchCredits(magasinId.value);
     if (data.success) {
       credits.value = data.data.map(c => ({
         id: c.id,
@@ -759,10 +757,10 @@ const loadCredits = async () => {
         telephone: c.client_telephone,
         montantTotal: parseFloat(c.montant_total),
         paye: parseFloat(c.montant_paye)
-      }))
+      }));
     }
   } catch (err) {
-    console.error('Erreur chargement crédits:', err)
+    console.error('Erreur chargement crédits:', err);
   }
 }
 
@@ -874,12 +872,7 @@ const confirmSale = async () => {
     if (paymentType.value === 'partiel') {
       payload.montant_paye = partialAmount.value
     }
-    const response = await fetch(`${API_BASE_URL}/api_ventes.php?action=add`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    })
-    const data = await response.json()
+    const data = await addVente(payload)
     if (data.success) {
       await reloadAllData()
       closePOS()
@@ -926,12 +919,7 @@ const processPayment = async () => {
       montant_paye: paymentAmount.value,
       utilisateur: 'Système'
     }
-    const response = await fetch(`${API_BASE_URL}/api_ventes.php?action=paiement`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    })
-    const data = await response.json()
+    const data = await paiementVente(payload)
     if (data.success) {
       await reloadAllData()
       closePaymentModal()
@@ -950,7 +938,7 @@ const processPayment = async () => {
 
 // ========== Other Functions ==========
 const goBack = () => router.push(`/magasins/${magasinId.value}`)
-const viewVente = (vente) => { /* existant */ }
+// Suppression de la redéclaration inutile de viewVente
 const formatMoney = (amount) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF', minimumFractionDigits: 0 }).format(amount)
 
 // Lifecycle

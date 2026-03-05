@@ -112,17 +112,6 @@
       <div v-if="activeTab === 'produits'" :style="tableContainerStyle" class="fade-in">
         <div :style="tableHeaderStyle">
           <h3 :style="sectionTitleStyle">Liste des produits</h3>
-          <button 
-            :style="addButtonStyle" 
-            @click="showProduitModal = true"
-            @mouseenter="addProduitHovered = true"
-            @mouseleave="addProduitHovered = false"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <path d="M12 5v14M5 12h14"/>
-            </svg>
-            Nouveau produit
-          </button>
         </div>
 
         <div :style="tableWrapperStyle">
@@ -561,6 +550,16 @@ const closeProduitModal = () => {
 const saveProduit = async () => {
   if (!formProduit.value.reference || !formProduit.value.nom) {
     toast.error('Référence et nom requis')
+    return
+  }
+  // Validation téléphone (doit être un numéro)
+  if (formProduit.value.telephone && !/^\d{8,15}$/.test(formProduit.value.telephone)) {
+    toast.error('Le téléphone doit être un numéro valide (8 à 15 chiffres)')
+    return
+  }
+  // Validation email
+  if (formProduit.value.email && !/^\S+@\S+\.\S+$/.test(formProduit.value.email)) {
+    toast.error('L\'email doit être valide')
     return
   }
   saving.value = true

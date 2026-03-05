@@ -437,7 +437,7 @@ import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { usePdvSelectionStore } from '../stores/pdvSelectionStore'
 import { useRoute } from 'vue-router'
 import SidebarLayout from './SidebarLayout.vue'
-import { getPointVente, updatePointVente, deletePointVente } from '../services/api'
+import { getPointVente, updatePointVente, deletePointVente } from '../services/api.js'
 
 // ─── Constantes
 const PERIODES=[{key:'today',label:"Aujourd'hui"},{key:'week',label:'7 jours'},{key:'month',label:'Ce mois'},{key:'all',label:'Tout'}]

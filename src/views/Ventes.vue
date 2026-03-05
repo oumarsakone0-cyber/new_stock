@@ -368,13 +368,25 @@
                 <input v-model.number="form.objectif_jour" type="number" :style="inputStyle" placeholder="0" min="0"/>
               </div>
               <div :style="groupStyle">
+                <label :style="labelStyle">Magasin associé <span :style="reqStyle">*</span></label>
+                <select v-model="form.id" :style="inputStyle" required>
+                  <option disabled value="">Sélectionner un magasin</option>
+                  <option v-for="mag in magasins" :key="mag.id" :value="mag.id">
+                    {{ mag.nom }} ({{ mag.ville || mag.adresse }})
+                  </option>
+                </select>
+              </div>
+            </div>
+
+            <div :style="rowStyle">
+              <div :style="groupStyle">
                 <label :style="labelStyle">Type de point de vente</label>
                 <select v-model="form.type_pdv" :style="inputStyle">
-                  <option value="boutique">Boutique</option>
-                  <option value="kiosque">Kiosque</option>
-                  <option value="depot">Dépôt</option>
-                  <option value="mobile">Mobile</option>
-                </select>
+                    <option value="boutique">Boutique</option>
+                    <option value="kiosque">Kiosque</option>
+                    <option value="depot">Dépôt</option>
+                    <option value="mobile">Mobile</option>
+                  </select>
               </div>
             </div>
 
@@ -469,7 +481,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { usePdvSelectionStore } from '../stores/pdvSelectionStore'
 import { useRouter } from 'vue-router'
 import SidebarLayout from './SidebarLayout.vue'
-import { getPointsVente, addPointVente, updatePointVente, deletePointVente } from '../services/api'
+import { getPointsVente, addPointVente, updatePointVente, deletePointVente, getMagasins } from '../services/api.js'
 const router = useRouter()
 const pdvSelectionStore = usePdvSelectionStore()
 // ─── Constantes ─────────────────────────────────────────────────────
@@ -507,8 +519,20 @@ const form = reactive({
   nom: '', ville: '', quartier: '', adresse: '',
   responsable: '', contact: '', email: '',
   statut: 'actif', objectif_jour: 0,
-  type_pdv: 'boutique', notes: ''
+  type_pdv: 'boutique', notes: '',
+  id: '' // id du magasin
 })
+
+const magasins = ref([])
+
+const chargerMagasins = async () => {
+  try {
+    const res = await getMagasins()
+    magasins.value = Array.isArray(res.data.data) ? res.data.data : []
+  } catch(e) {
+    magasins.value = []
+  }
+}
 
 const clotureForm = reactive({ montant_encaisse: 0, observations: '' })
 
@@ -624,11 +648,23 @@ const cloturerJournee = (pdv) => {
 const confirmerCloture = async () => {
   saving.value = true
   try {
-    // await cloturerJourneePdv({ id: cloturePdv.value.id, ...clotureForm })
-    const pdv = pdvList.value.find(p => p.id === cloturePdv.value.id)
-    if (pdv) { pdv.a_encaisser = 0; pdv.derniere_cloture = new Date().toISOString() }
-    showCloture.value = false
-  } catch(e) { alert('Erreur lors de la clôture') } finally { saving.value = false }
+    // Appel API à créer dans src/services/api.js
+    const res = await cloturerJourneePdv({ id: cloturePdv.value.id_pdv, montant_encaisse: clotureForm.montant_encaisse, observations: clotureForm.observations })
+    if (res.data?.success) {
+      const pdv = pdvList.value.find(p => p.id === cloturePdv.value.id)
+      if (pdv) {
+        pdv.a_encaisser = 0;
+        pdv.derniere_cloture = new Date().toISOString();
+      }
+      showCloture.value = false
+    } else {
+      alert(res.data?.error || 'Erreur lors de la clôture')
+    }
+  } catch(e) {
+    alert('Erreur lors de la clôture')
+  } finally {
+    saving.value = false
+  }
 }
 
 const openCreateModal = () => { editingPdv.value = null; resetForm(); showModal.value = true }
@@ -639,13 +675,17 @@ const editPdv = (pdv) => {
     responsable: pdv.responsable, contact: pdv.contact, email: pdv.email||'',
     statut: pdv.statut, objectif_jour: pdv.objectif_jour||0,
     type_pdv: pdv.type_pdv||'boutique', notes: pdv.notes||''
-  })
+      , id: pdv.id || ''
+    })
   showModal.value = true
 }
 const closeModal = () => { showModal.value = false; editingPdv.value = null; resetForm() }
-const resetForm = () => Object.assign(form, { nom:'', ville:'', quartier:'', adresse:'', responsable:'', contact:'', email:'', statut:'actif', objectif_jour:0, type_pdv:'boutique', notes:'' })
+const resetForm = () => Object.assign(form, { nom:'', ville:'', quartier:'', adresse:'', responsable:'', contact:'', email:'', statut:'actif', objectif_jour:0, type_pdv:'boutique', notes:'', id:'' })
 
-onMounted(loadPdv)
+onMounted(() => {
+  loadPdv()
+  chargerMagasins()
+})
 
 // ─── Styles ─────────────────────────────────────────────────────────
 const headerStyle = { display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'28px', flexWrap:'wrap', gap:'20px' }

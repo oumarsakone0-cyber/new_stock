@@ -1,7 +1,85 @@
+// Clôturer la journée d'un point de vente
+export const cloturerJourneePdv = (payload) => {
+  return api.post('api_points_vente.php?action=cloture_journee', payload);
+};
+// --- Fonctions pour MagasinVentes.vue (fetch natif) ---
+// Récupérer un magasin par ID
+export const fetchMagasin = (id) =>
+  fetch(`${getApiBaseUrl()}/api_magasins.php?action=get&id=${id}&_=${Math.random()}`)
+    .then(r => r.json());
+
+// Récupérer la liste des produits d'un magasin
+export const fetchProduits = (magasinId) =>
+  fetch(`${getApiBaseUrl()}/api_produits.php?action=list&magasin_id=${magasinId}&_=${Math.random()}`)
+    .then(r => r.json());
+
+// Récupérer la liste des ventes d'un magasin
+export const fetchVentes = (magasinId) =>
+  fetch(`${getApiBaseUrl()}/api_ventes.php?action=list&magasin_id=${magasinId}&_=${Math.random()}`)
+    .then(r => r.json());
+
+// Détail d'une vente
+export const fetchVenteDetails = (venteId) =>
+  fetch(`${getApiBaseUrl()}/api_ventes.php?action=details&id=${venteId}&_=${Math.random()}`)
+    .then(r => r.json());
+
+// Statistiques des ventes
+export const fetchVentesStats = (magasinId) =>
+  fetch(`${getApiBaseUrl()}/api_ventes.php?action=stats&magasin_id=${magasinId}&_=${Math.random()}`)
+    .then(r => r.json());
+
+// Liste des crédits actifs
+export const fetchCredits = (magasinId) =>
+  fetch(`${getApiBaseUrl()}/api_credits.php?action=list&magasin_id=${magasinId}&statut=Actif&_=${Math.random()}`)
+    .then(r => r.json());
+
+// Ajouter une vente
+export const addVente = (data) =>
+  fetch(`${getApiBaseUrl()}/api_ventes.php?action=add`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  }).then(r => r.json());
+
+// Paiement d'une vente
+export const paiementVente = (data) =>
+  fetch(`${getApiBaseUrl()}/api_ventes.php?action=paiement`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  }).then(r => r.json());
+// Liste des magasins
+export const getMagasins = (params = {}) => {
+  return api.get('api_magasins.php?action=list', { params });
+};
+
+// Détail d'un magasin
+export const getMagasin = (id) => {
+  return api.get('api_magasins.php?action=get', { params: { id } });
+};
+
+// Ajouter un magasin
+export const addMagasin = (payload) => {
+  return api.post('api_magasins.php?action=add', payload);
+};
+
+// Modifier un magasin
+export const updateMagasin = (payload) => {
+  return api.post('api_magasins.php?action=update', payload);
+};
+
+// Supprimer un magasin
+export const deleteMagasin = (id) => {
+  return api.post('api_magasins.php?action=delete', { id });
+};
 // ==================== POINTS DE VENTE ====================
+// Lier un point de vente à une boutique
+export const lierPointVenteBoutique = (id_pdv, id_magasin) => {
+  return api.post('api_points_vente.php?action=lier_boutique', { id_pdv, id_magasin });
+};
 // Liste des points de vente
 export const getPointsVente = () => {
-  return api.get('api_points_vente.php?action=list');
+  return api.get('api_points_vente.php?action=list_point_de_vente');
 };
 
 // Détail d'un point de vente
@@ -63,6 +141,15 @@ export const deleteClient = (id_client) => {
 };
 
 // ==================== ENTREPOTS ====================
+// ==================== FOURNISSEURS ====================
+// Rapport synthétique d'un fournisseur
+export const getFournisseurRapport = (fournisseur_id) => {
+  return api.get('api_fournisseurs.php?action=rapport_fournisseur', { params: { fournisseur_id } });
+};
+// Liste des commandes d'un fournisseur
+export const getFournisseurCommandes = (fournisseur_id) => {
+  return api.get('api_fournisseurs.php?action=list_commandes', { params: { fournisseur_id } });
+};
 // Liste des entrepôts
 export const getEntrepots = (params = {}) => {
   return api.get('api_entrepots.php?action=list_entrepots', { params });

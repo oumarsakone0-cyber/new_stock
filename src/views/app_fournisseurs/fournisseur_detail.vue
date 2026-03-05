@@ -110,7 +110,7 @@
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                   <path d="M12 5v14M5 12h14"/>
                 </svg>
-                Nouveau produit
+                Relier un produit
               </button>
             </div>
 
@@ -118,7 +118,7 @@
               <table :style="tableStyle">
                 <thead>
                   <tr>
-                    <th :style="thStyle">Référence</th>
+                    
                     <th :style="thStyle">Produit</th>
                     <th :style="thStyle">Catégorie</th>
                     <th :style="thStyle">Prix unitaire</th>
@@ -131,9 +131,7 @@
                 </thead>
                 <tbody>
                   <tr v-for="produit in produits" :key="produit.id" :style="trStyle">
-                    <td :style="tdStyle">
-                      <span :style="refStyle">{{ produit.reference_fournisseur || 'N/A' }}</span>
-                    </td>
+                   
                     <td :style="tdStyle">
                       <p :style="produitNameStyle">{{ produit.nom_produit }}</p>
                       <p v-if="produit.description" :style="produitDescStyle">{{ produit.description }}</p>
@@ -149,11 +147,7 @@
                       <span :style="priceNetStyle">{{ formatMoney(produit.prix_unitaire_remise) }}</span>
                     </td>
                     <td :style="tdStyle">{{ produit.unite_mesure }}</td>
-                    <td :style="tdStyle">
-                      <span :style="getDispoBadgeStyle(produit.disponibilite)">
-                        {{ produit.disponibilite }}
-                      </span>
-                    </td>
+                    
                     <td :style="tdStyle">
                       <div :style="actionsStyle">
                         <button 
@@ -296,14 +290,21 @@
             
             <div :style="modalContentStyle">
               <div :style="formGridStyle">
-                <div :style="formGroupStyle">
-                  <label :style="labelStyle">Référence fournisseur</label>
-                  <input v-model="formProduit.reference_fournisseur" type="text" :style="inputStyle" />
-                </div>
+                
 
                 <div :style="formGroupStyle">
-                  <label :style="labelStyle">Nom produit *</label>
-                  <input v-model="formProduit.nom_produit" type="text" :style="inputStyle" required />
+                  <label :style="labelStyle">Produit *</label>
+                  <input
+                    v-model="formProduit.nom_produit"
+                    list="produits-list"
+                    :style="inputStyle"
+                    placeholder="Rechercher ou saisir le nom du produit"
+                    required
+                    @input="onProduitInput"
+                  />
+                  <datalist id="produits-list">
+                    <option v-for="p in produitsGlobal" :key="p.id" :value="p.nom">{{ p.nom }}</option>
+                  </datalist>
                 </div>
 
                 <div :style="{...formGroupStyle, gridColumn: '1 / -1'}">
@@ -346,19 +347,9 @@
                   <input v-model="formProduit.unite_mesure" type="text" :style="inputStyle" placeholder="Ex: Kg, Carton" />
                 </div>
 
-                <div :style="formGroupStyle">
-                  <label :style="labelStyle">Disponibilité</label>
-                  <select v-model="formProduit.disponibilite" :style="selectStyle">
-                    <option value="En stock">En stock</option>
-                    <option value="Sur commande">Sur commande</option>
-                    <option value="Indisponible">Indisponible</option>
-                  </select>
-                </div>
+                
 
-                <div :style="formGroupStyle">
-                  <label :style="labelStyle">Délai appro (jours)</label>
-                  <input v-model.number="formProduit.delai_approvisionnement" type="number" :style="inputStyle" />
-                </div>
+                
               </div>
 
               <div :style="modalActionsStyle">
@@ -442,6 +433,11 @@
                   <input v-model.number="formCommande.frais_livraison" type="number" :style="inputStyle" />
                 </div>
 
+                <div :style="formGroupStyle">
+                  <label :style="labelStyle">Preuve de commande (PDF, image...)</label>
+                  <input type="file" @change="onPreuveCommandeChange" :style="inputStyle" accept=".pdf,image/*" />
+                  <span v-if="formCommande.preuve_commande_name" style="font-size:12px;color:#64748b">Fichier sélectionné : {{ formCommande.preuve_commande_name }}</span>
+                </div>
                 <div :style="{...formGroupStyle, gridColumn: '1 / -1'}">
                   <label :style="labelStyle">Observation</label>
                   <textarea v-model="formCommande.observation" :style="textareaStyle" rows="2"></textarea>
@@ -544,19 +540,32 @@
   </SidebarLayout>
 </template>
 
+
 <script setup>
 
 import { ref, computed, onMounted } from 'vue'
+import { useToast } from 'vue-toastification'
 import { useRouter, useRoute } from 'vue-router'
 import SidebarLayout from '../SidebarLayout.vue'
 import api from '../../services/api.js'
+import { getFournisseurCommandes } from '../../services/api.js'
+import { uploadToCloudinary } from '../../services/cloudinaryService.js'
+import { useAuthStore } from '../../stores/authStore'
+import { storeToRefs } from 'pinia'
 
 const router = useRouter()
 const route = useRoute()
 const fournisseurId = route.params.id
 
+// Authentification (Pinia)
+const authStore = useAuthStore();
+const { user } = storeToRefs(authStore);
+const userId = computed(() => user.value?.id || null);
+const entrepriseId = computed(() => user.value?.id_entreprise || null);
+
 // State
 const loading = ref(false)
+const toast = useToast();
 const saving = ref(false)
 const fournisseur = ref(null)
 const stats = ref({})
@@ -601,8 +610,27 @@ const formCommande = ref({
   adresse_livraison: '',
   frais_livraison: 0,
   responsable: '',
-  observation: ''
+  observation: '',
+  preuve_commande_url: '',
+  preuve_commande_name: ''
 })
+// Gestion de l'upload de la preuve de commande
+const onPreuveCommandeChange = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  formCommande.value.preuve_commande_name = file.name;
+  try {
+    saving.value = true;
+    const url = await uploadToCloudinary(file);
+    formCommande.value.preuve_commande_url = url;
+    toast.success('Fichier uploadé avec succès');
+  } catch (err) {
+    formCommande.value.preuve_commande_url = '';
+    toast.error('Erreur upload fichier : ' + (err.message || err));
+  } finally {
+    saving.value = false;
+  }
+};
 
 const formPaiement = ref({
   montant_paye: 0,
@@ -677,7 +705,7 @@ const loadProduits = async () => {
 
 const loadCommandes = async () => {
   try {
-    const response = await api.get(`api_fournisseurs.php?action=list_commandes&fournisseur_id=${fournisseurId}`);
+    const response = await getFournisseurCommandes(fournisseurId);
     if (response.data.success) {
       commandes.value = response.data.data;
     }
@@ -796,14 +824,24 @@ const closeCommandeModal = () => {
 
 const saveCommande = async () => {
   if (!formCommande.value.numero_commande || !formCommande.value.montant_total) {
-      toast.error('N° commande et montant requis');
+    toast.error('N° commande et montant requis');
     return;
   }
-
+  // Vérifier si un fichier a été sélectionné mais pas uploadé
+  if (formCommande.value.preuve_commande_name && !formCommande.value.preuve_commande_url) {
+    toast.error('Veuillez attendre la fin de l’upload du fichier.');
+    return;
+  }
   saving.value = true;
   try {
-    formCommande.value.fournisseur_id = fournisseurId;
-    const response = await api.post('api_fournisseurs.php?action=add_commande', formCommande.value);
+    // Préparer le payload avec user et entreprise
+    const payload = {
+      ...formCommande.value,
+      fournisseur_id: fournisseurId,
+      id_entreprise: entrepriseId.value,
+      user_id: userId.value
+    };
+    const response = await api.post('api_fournisseurs.php?action=add_commande', payload);
     if (response.data.success) {
       await loadCommandes();
       await loadStats();
@@ -813,8 +851,8 @@ const saveCommande = async () => {
       toast.error(response.data.message);
     }
   } catch (error) {
-      console.error('Erreur:', error);
-      toast.error('Erreur de création');
+    console.error('Erreur:', error);
+    toast.error('Erreur de création');
   } finally {
     saving.value = false;
   }

@@ -19,9 +19,9 @@
         </p>
       </div>
       <button 
-        v-if="authStore.isAdmin"
+        v-if="authStore.hasAccessToMagasins"
         :style="addButtonStyle" 
-        @click="showCreateModal = true" 
+        @click="goToCreateMagasin" 
         @mouseenter="addHovered = true" 
         @mouseleave="addHovered = false"
         class="fade-in"
@@ -32,7 +32,7 @@
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12h14"/>
           </svg>
         </div>
-        <span>Nouveau Magasin</span>
+        <span>Nouvelle Boutique</span>
       </button>
     </header>
 
@@ -133,7 +133,7 @@
             </button>
             <button 
               :style="getDeleteBtnStyle(index)" 
-              @click.stop="deleteMagasin(magasin.id)" 
+              @click.stop="deleteMagasinAction(magasin.id)" 
               @mouseenter="hoveredAction = 'delete-' + index"
               @mouseleave="hoveredAction = null"
               title="Supprimer"
@@ -213,7 +213,7 @@
 
     <!-- Premium Modal (admin uniquement) -->
     <Transition name="modal">
-      <div v-if="showCreateModal && authStore.isAdmin" :style="modalOverlayStyle" @click.self="closeModal">
+      <div v-if="showCreateModal && authStore.hasAccessToMagasins" :style="modalOverlayStyle" @click.self="closeModal">
         <div :style="modalStyle" class="modal-content">
           <!-- Modal Header -->
           <div :style="modalHeaderStyle">
@@ -321,16 +321,18 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import SidebarLayout from '../SidebarLayout.vue'
 import { useAuthStore } from '../../stores/authStore'
+import { getMagasins, addMagasin, updateMagasin, deleteMagasin } from '../../services/api.js'
 
 const router = useRouter()
 const authStore = useAuthStore()
 
-const API_BASE_URL = 'https://sogetrag.com/apistok'
-
 const hoveredCard = ref(null)
 const hoveredAction = ref(null)
 const addHovered = ref(false)
-const showCreateModal = ref(false)
+const showCreateModal = ref(false) // conservé si besoin modal
+const goToCreateMagasin = () => {
+  showCreateModal.value = true
+}
 const editingMagasin = ref(null)
 const loading = ref(false)
 const saving = ref(false)
@@ -361,27 +363,10 @@ const loadMagasins = async () => {
   loading.value = true
   error.value = null
   try {
-    // Génère un nombre aléatoire pour éviter le cache
-    const cacheBuster = Math.random()  
-    const response = await fetch(`${API_BASE_URL}/api_magasins.php?action=list&_=${cacheBuster}`)
-    const data = await response.json()
-    
-    if (data.success) {
-      const allMagasins = data.data
-      // Filtrer selon les accès de l'utilisateur connecté
-      const acces = authStore.accessibleMagasins
-      if (acces === 'all' || authStore.isAdmin) {
-        magasins.value = allMagasins
-      } else if (Array.isArray(acces) && acces.length > 0) {
-        magasins.value = allMagasins.filter(m => acces.includes(parseInt(m.id)))
-      } else {
-        magasins.value = []
-      }
-    } else {
-      error.value = data.error || 'Erreur lors du chargement des magasins'
-    }
+    const response = await getMagasins()
+    magasins.value = response.data.data || []
   } catch (err) {
-    error.value = 'Impossible de se connecter au serveur'
+    error.value = err.message || 'Erreur de chargement des magasins'
     console.error('Erreur:', err)
   } finally {
     loading.value = false
@@ -391,22 +376,13 @@ const loadMagasins = async () => {
 const saveMagasin = async () => {
   saving.value = true
   try {
-    const url = editingMagasin.value 
-      ? `${API_BASE_URL}/api_magasins.php?action=update`
-      : `${API_BASE_URL}/api_magasins.php?action=add`
-    
-    const payload = editingMagasin.value
-      ? { ...formData, id: editingMagasin.value.id }
-      : { ...formData }
-
-    const response = await fetch(url, {
-      method: editingMagasin.value ? 'PUT' : 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    })
-    
-    const data = await response.json()
-    
+    let response;
+    if (editingMagasin.value) {
+      response = await updateMagasin({ ...formData, id: editingMagasin.value.id })
+    } else {
+      response = await addMagasin({ ...formData })
+    }
+    const data = response.data
     if (data.success) {
       await loadMagasins()
       closeModal()
@@ -421,16 +397,11 @@ const saveMagasin = async () => {
   }
 }
 
-const deleteMagasin = async (id) => {
+const deleteMagasinAction = async (id) => {
   if (!confirm('Êtes-vous sûr de vouloir supprimer ce magasin ?')) return
-  
   try {
-    const response = await fetch(`${API_BASE_URL}/api_magasins.php?action=delete&id=${id}`, {
-      method: 'DELETE'
-    })
-    
-    const data = await response.json()
-    
+    const response = await deleteMagasin(id)
+    const data = response.data
     if (data.success) {
       await loadMagasins()
     } else {

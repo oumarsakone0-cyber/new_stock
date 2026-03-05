@@ -28,7 +28,14 @@ class PointsVenteAPI {
         $role = in_array('ALL', $user['access']) ? 'admin' : 'user';
         try {
             switch ($action) {
-                case 'list':
+                case 'cloture_journee':
+                    $this->clotureJournee($id_entreprise, $user_id);
+                    break;
+                                    
+                case 'lier_boutique':
+                    $this->lierBoutique($id_entreprise, $role);
+                    break;
+                case 'list_point_de_vente':
                     $this->listPointsVente($id_entreprise, $role);
                     break;
                 case 'get':
@@ -58,6 +65,47 @@ class PointsVenteAPI {
         }
     }
 
+    // Lier un point de vente à une boutique
+    private function lierBoutique($id_entreprise, $role) {
+        $data = json_decode(file_get_contents('php://input'), true);
+        $id_pdv = $data['id_pdv'] ?? null;
+        $id_magasin = $data['id_magasin'] ?? null;
+        if (!$id_pdv || !$id_magasin) {
+            $this->sendResponse(400, ['success' => false, 'error' => 'ID point de vente et ID boutique requis']);
+        }
+        $sql = "UPDATE app_points_vente SET id_magasin = ? WHERE id_pdv = ?";
+        $params = [$id_magasin, $id_pdv];
+        if ($role !== 'admin' && $id_entreprise) {
+            $sql .= " AND id_entreprise = ?";
+            $params[] = $id_entreprise;
+        }
+        $this->db->query($sql, $params);
+        $this->sendResponse(200, ['success' => true, 'message' => 'Point de vente lié à la boutique']);
+    }
+    private function clotureJournee($id_entreprise, $user_id) {
+        $data = json_decode(file_get_contents('php://input'), true);
+        $id_pdv = $data['id'] ?? null;
+        $montant_encaisse = $data['montant_encaisse'] ?? null;
+        $observations = $data['observations'] ?? '';
+        if (!$id_pdv || $montant_encaisse === null) {
+            $this->sendResponse(400, ['success' => false, 'error' => 'ID point de vente et montant requis']);
+        }
+        // Debug : log des données reçues
+        error_log('cloture_journee: ' . json_encode($data));
+        $sql = "INSERT INTO app_points_vente_clotures (id_pdv, date_cloture, montant_encaisse, observations, cree_par) VALUES (?, NOW(), ?, ?, ?)";
+        $params = [$id_pdv, $montant_encaisse, $observations, $user_id];
+        try {
+            $this->db->query($sql, $params);
+            $this->sendResponse(201, ['success' => true, 'message' => 'Clôture de journée enregistrée']);
+        } catch (Exception $e) {
+            error_log('Erreur cloture_journee: ' . $e->getMessage());
+            $this->sendResponse(500, [
+                'success' => false,
+                'error' => 'Erreur SQL lors de la clôture',
+                'details' => $e->getMessage()
+            ]);
+        }
+    }
     private function listPointsVente($id_entreprise, $role) {
         $sql = "SELECT * FROM app_points_vente";
         $params = [];
@@ -90,9 +138,14 @@ class PointsVenteAPI {
         if (empty($data['nom']) || empty($data['ville']) || empty($data['responsable']) || empty($data['contact'])) {
             $this->sendResponse(400, ['success' => false, 'error' => 'Champs obligatoires manquants']);
         }
-        $sql = "INSERT INTO app_points_vente (id_entreprise, nom, ville, quartier, adresse, responsable, contact, email, statut, objectif_jour, type_pdv, notes, cree_par) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        // Vérification que le contact ne contient que des chiffres
+        if (!preg_match('/^\d+$/', $data['contact'])) {
+            $this->sendResponse(400, ['success' => false, 'error' => 'Le contact doit contenir uniquement des chiffres']);
+        }
+        $sql = "INSERT INTO app_points_vente (id_entreprise, id, nom, ville, quartier, adresse, responsable, contact, email, statut, objectif_jour, type_pdv, notes, cree_par) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         $params = [
             $id_entreprise,
+            $data['id'] ?? null,
             $data['nom'],
             $data['ville'],
             $data['quartier'] ?? '',
@@ -114,6 +167,10 @@ class PointsVenteAPI {
         $data = json_decode(file_get_contents('php://input'), true);
         if (empty($data['id_pdv'])) {
             $this->sendResponse(400, ['success' => false, 'error' => 'ID requis']);
+        }
+        // Vérification que le contact ne contient que des chiffres
+        if (!preg_match('/^\d+$/', $data['contact'])) {
+            $this->sendResponse(400, ['success' => false, 'error' => 'Le contact doit contenir uniquement des chiffres']);
         }
         $sql = "UPDATE app_points_vente SET nom=?, ville=?, quartier=?, adresse=?, responsable=?, contact=?, email=?, statut=?, objectif_jour=?, type_pdv=?, notes=?, modifie_par=? WHERE id_pdv=?";
         $params = [

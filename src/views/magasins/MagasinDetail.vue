@@ -173,6 +173,19 @@
         </div>
       </div>
 
+      <!-- Bouton voir les points de vente liés -->
+      <div style="margin-bottom: 24px; display: flex; align-items: center; gap: 16px;">
+        <button 
+          style="padding: 12px 24px; background: #10b981; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 15px; display: flex; align-items: center; gap: 8px;"
+          @click="goToListePdvLies"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right: 4px;">
+            <circle cx="12" cy="12" r="10"/>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8 12h8M12 8v8"/>
+          </svg>
+          Voir les points de vente liés ({{ pointsVenteLies.length }})
+        </button>
+      </div>
       <!-- Navigation Cards -->
       <div :style="sectionHeaderStyle" class="fade-in" style="animation-delay: 0.2s">
         <h2 :style="sectionTitleStyle">Gestion du magasin</h2>
@@ -213,11 +226,12 @@
 import { ref, computed, h, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import SidebarLayout from '../SidebarLayout.vue'
+import { getMagasin, getPointsVente } from '../../services/api.js'
 
 const router = useRouter()
 const route = useRoute()
 
-const API_BASE_URL = 'https://sogetrag.com/apistok'
+
 
 const magasinId = computed(() => route.params.id)
 
@@ -244,6 +258,40 @@ const hoveredStat = ref(null)
 const hoveredNav = ref(null)
 const loading = ref(false)
 const error = ref(null)
+
+// Liaison PDV
+const pointsVenteNonLies = ref([])
+const pointsVenteLies = ref([])
+const selectedPdvId = ref('')
+const successLiaison = ref(false)
+const errorLiaison = ref('')
+
+const chargerPointsVenteNonLies = async () => {
+  const res = await getPointsVente()
+  pointsVenteNonLies.value = (res.data?.data || []).filter(pdv => !pdv.id_magasin)
+}
+
+const chargerPointsVenteLies = async () => {
+  const res = await getPointsVente()
+  pointsVenteLies.value = (res.data?.data || []).filter(pdv => pdv.id === magasinId.value || pdv.id == magasinId.value || pdv.id_magasin === magasinId.value || pdv.id_magasin == magasinId.value)
+}
+
+const lierPdv = async () => {
+  successLiaison.value = false
+  errorLiaison.value = ''
+  try {
+    const res = await lierPointVenteBoutique(selectedPdvId.value, magasinId.value)
+    if (res.data?.success) {
+      successLiaison.value = true
+      selectedPdvId.value = ''
+      await chargerPointsVenteNonLies()
+    } else {
+      errorLiaison.value = res.data?.error || 'Erreur lors de la liaison'
+    }
+  } catch (e) {
+    errorLiaison.value = 'Erreur réseau'
+  }
+}
 
 const formatMoney = (amount) => {
   return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF', minimumFractionDigits: 0 }).format(amount)
@@ -277,39 +325,31 @@ const navItems = computed(() => [
 
 // API Functions
 const loadMagasinData = async () => {
-  loading.value = true
-  error.value = null
-  
   try {
-    // Charger les détails du magasin
-    const detailsResponse = await fetch(`${API_BASE_URL}/api_magasins.php?action=details&id=${magasinId.value}`)
-    const detailsData = await detailsResponse.json()
-    
-    if (!detailsData.success) {
-      throw new Error(detailsData.error || 'Erreur lors du chargement du magasin')
+    const response = await getMagasin(magasinId.value)
+    const data = response.data
+    if (data.success && data.data) {
+      magasin.value = data.data
+    } else {
+      throw new Error(data.error || 'Magasin non trouvé')
     }
-    
-    magasin.value = detailsData.data
-    
-    // Charger les statistiques
-    const statsResponse = await fetch(`${API_BASE_URL}/api_magasins.php?action=stats&id=${magasinId.value}`)
-    const statsData = await statsResponse.json()
-    
-    if (statsData.success) {
-      stats.value = statsData.data
-    }
-    
   } catch (err) {
-    error.value = err.message || 'Impossible de charger les données'
-    console.error('Erreur:', err)
-  } finally {
-    loading.value = false
+    error.value = err.message || 'Erreur de chargement du magasin'
+  }
+}
+
+const goToListePdvLies = () => {
+  if (pointsVenteLies.value.length > 0) {
+    router.push({ name: 'points_de_vente', query: { magasin: magasinId } })
+  } else {
+    error.value = "Aucun point de vente lié à ce magasin. Veuillez d'abord lier un point de vente.";
   }
 }
 
 // Load data on mount
 onMounted(() => {
   loadMagasinData()
+  chargerPointsVenteLies()
 })
 
 // Styles
