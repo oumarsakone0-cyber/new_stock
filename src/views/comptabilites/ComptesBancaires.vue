@@ -1,101 +1,115 @@
 <template>
   <SidebarLayout currentPage="comptabilites">
-    <div>
-      <header :style="headerStyle" class="fade-in">
+    <div class="bancaire-page">
+      <!-- Header -->
+      <header class="bancaire-header fade-in">
         <div>
-          <h1 :style="titleStyle">Comptes Bancaires</h1>
-          <p :style="subtitleStyle">Gérez vos comptes et suivez les soldes (calculés à partir des transactions)</p>
+          <h1 class="bancaire-title">Comptes Bancaires</h1>
+          <p class="bancaire-subtitle">Gerez vos comptes et suivez les soldes (calcules a partir des transactions)</p>
         </div>
-        <div :style="{display:'flex', gap:'10px', flexWrap:'wrap'}">
-          <button :style="secondaryBtnStyle" @click="goTo('/comptabilites/banque')">Retour</button>
-          <button :style="secondaryBtnStyle" @click="goTo('/comptabilites/banque/transactions')">Transactions</button>
-          <button :style="primaryBtnStyle" @click="openModal()">Nouveau compte</button>
+        <div class="header-actions">
+          <button class="btn btn--dark" @click="goTo('/comptabilites/banque')">Retour</button>
+          <button class="btn btn--dark" @click="goTo('/comptabilites/banque/transactions')">Transactions</button>
+          <button class="btn btn--primary" @click="openModal()">Nouveau compte</button>
         </div>
       </header>
 
-      <div :style="tableContainerStyle" class="fade-in">
-        <div v-if="loading" :style="loadingContainerStyle">
-          <div :style="spinnerStyle"></div>
-          <p :style="loadingTextStyle">Chargement...</p>
+      <!-- Table -->
+      <div class="table-container fade-in">
+        <!-- Loading -->
+        <div v-if="loading" class="loading-state">
+          <div class="spinner"></div>
+          <p class="loading-text">Chargement...</p>
         </div>
 
-        <div v-if="!loading" :style="tableWrapperStyle">
-          <table :style="tableStyle">
+        <!-- Content -->
+        <div v-if="!loading" class="table-wrapper">
+          <table class="data-table">
             <thead>
               <tr>
-                <th :style="thStyle">Banque</th>
-                <th :style="thStyle">Nom du compte</th>
-                <th :style="thStyle">N° Compte</th>
-                <th :style="thStyle">Devise</th>
-                <th :style="thStyle">Solde initial</th>
-                <th :style="thStyle">Solde actuel</th>
-                <th :style="thStyle">Actions</th>
+                <th>Banque</th>
+                <th>Nom du compte</th>
+                <th>N&deg; Compte</th>
+                <th>Devise</th>
+                <th>Solde initial</th>
+                <th>Solde actuel</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="c in comptes" :key="c.id" :style="trStyle">
-                <td :style="tdStyle">{{ c.banque || '—' }}</td>
-                <td :style="tdStyle"><strong>{{ c.nom_compte || '—' }}</strong></td>
-                <td :style="tdStyle">{{ c.numero_compte || '—' }}</td>
-                <td :style="tdStyle">{{ c.devise || 'XOF' }}</td>
-                <td :style="tdStyle">{{ formatMoney(c.solde_initial || 0) }}</td>
-                <td :style="tdStyle">
-                  <span :style="balanceStyle(c.solde_actuel)">{{ formatMoney(c.solde_actuel || 0) }}</span>
+              <tr v-for="c in comptes" :key="c.id">
+                <td>{{ c.banque || '—' }}</td>
+                <td><strong>{{ c.nom_compte || '—' }}</strong></td>
+                <td>{{ c.numero_compte || '—' }}</td>
+                <td>{{ c.devise || 'XOF' }}</td>
+                <td>{{ formatMoney(c.solde_initial || 0) }}</td>
+                <td>
+                  <span :class="['solde', Number(c.solde_actuel || 0) < 0 ? 'solde--negatif' : 'solde--positif']">
+                    {{ formatMoney(c.solde_actuel || 0) }}
+                  </span>
                 </td>
-                <td :style="tdStyle">
-                  <div :style="{display:'flex', gap:'8px'}">
-                    <button :style="actionBtnStyle('#3b82f6')" @click="openModal(c)">Modifier</button>
-                    <button :style="actionBtnStyle('#ef4444')" @click="deleteCompte(c)">Supprimer</button>
+                <td>
+                  <div class="row-actions">
+                    <button class="btn-action btn-action--edit" @click="openModal(c)">Modifier</button>
+                    <button class="btn-action btn-action--delete" @click="deleteCompte(c)">Supprimer</button>
                   </div>
                 </td>
               </tr>
             </tbody>
           </table>
 
-          <div v-if="comptes.length === 0" :style="emptyStateStyle">
-            <p :style="emptyTextStyle">Aucun compte</p>
+          <!-- Empty -->
+          <div v-if="comptes.length === 0" class="empty-state">
+            <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="empty-icon">
+              <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+            </svg>
+            <p class="empty-text">Aucun compte bancaire</p>
+            <p class="empty-hint">Cliquez sur "Nouveau compte" pour commencer</p>
           </div>
         </div>
       </div>
 
+      <!-- Modal -->
       <Transition name="modal">
-        <div v-if="showModal" :style="modalOverlayStyle" @click.self="closeModal">
-          <div :style="modalStyle" class="modal-content">
-            <div :style="modalHeaderStyle">
-              <h2 :style="modalTitleStyle">{{ editing ? 'Modifier compte' : 'Nouveau compte' }}</h2>
-              <button :style="closeButtonStyle" @click="closeModal">✕</button>
+        <div v-if="showModal" class="modal-overlay" @click.self="closeModal">
+          <div class="modal">
+            <div class="modal-header">
+              <h2 class="modal-title">{{ editing ? 'Modifier compte' : 'Nouveau compte' }}</h2>
+              <button class="modal-close" @click="closeModal">&times;</button>
             </div>
-            <div :style="modalBodyStyle">
-              <div :style="formGridStyle">
-                <div>
-                  <label :style="labelStyle">Banque</label>
-                  <input v-model="form.banque" type="text" :style="inputStyle" placeholder="Ex: SGBCI" />
+            <div class="modal-body">
+              <div class="form-grid">
+                <div class="form-group">
+                  <label class="form-label">Banque</label>
+                  <input v-model="form.banque" type="text" class="form-input" placeholder="Ex: SGBCI" />
                 </div>
-                <div>
-                  <label :style="labelStyle">Nom du compte *</label>
-                  <input v-model="form.nom_compte" type="text" :style="inputStyle" placeholder="Ex: Compte principal" />
+                <div class="form-group">
+                  <label class="form-label">Nom du compte *</label>
+                  <input v-model="form.nom_compte" type="text" class="form-input" placeholder="Ex: Compte principal" />
                 </div>
-                <div>
-                  <label :style="labelStyle">Numéro de compte</label>
-                  <input v-model="form.numero_compte" type="text" :style="inputStyle" placeholder="Optionnel" />
+                <div class="form-group">
+                  <label class="form-label">Numero de compte</label>
+                  <input v-model="form.numero_compte" type="text" class="form-input" placeholder="Optionnel" />
                 </div>
-                <div>
-                  <label :style="labelStyle">Devise</label>
-                  <select v-model="form.devise" :style="inputStyle">
+                <div class="form-group">
+                  <label class="form-label">Devise</label>
+                  <select v-model="form.devise" class="form-input">
                     <option value="XOF">XOF</option>
                     <option value="EUR">EUR</option>
                     <option value="USD">USD</option>
                   </select>
                 </div>
-                <div style="grid-column: 1 / -1;">
-                  <label :style="labelStyle">Solde initial</label>
-                  <input v-model.number="form.solde_initial" type="number" step="1" :style="inputStyle" />
+                <div class="form-group form-group--full">
+                  <label class="form-label">Solde initial</label>
+                  <input v-model.number="form.solde_initial" type="number" step="1" class="form-input" />
                 </div>
               </div>
             </div>
-            <div :style="modalFooterStyle">
-              <button :style="secondaryBtnStyle" @click="closeModal">Annuler</button>
-              <button :style="primaryBtnStyle" @click="saveCompte" :disabled="saving">{{ saving ? 'Enregistrement...' : 'Enregistrer' }}</button>
+            <div class="modal-footer">
+              <button class="btn btn--dark" @click="closeModal">Annuler</button>
+              <button class="btn btn--primary" @click="saveCompte" :disabled="saving">
+                {{ saving ? 'Enregistrement...' : 'Enregistrer' }}
+              </button>
             </div>
           </div>
         </div>
@@ -147,11 +161,6 @@ const formatMoney = (amount) => new Intl.NumberFormat('fr-FR', {
   currency: 'XOF',
   maximumFractionDigits: 0
 }).format(Number(amount || 0))
-
-const balanceStyle = (amount) => ({
-  fontWeight: '900',
-  color: Number(amount || 0) < 0 ? '#ef4444' : '#059669'
-})
 
 const loadComptes = async () => {
   loading.value = true
@@ -228,41 +237,330 @@ const deleteCompte = async (c) => {
 }
 
 onMounted(loadComptes)
-
-// Styles
-const headerStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '18px' }
-const titleStyle = { fontSize: '32px', fontWeight: '800', color: '#0f172a', margin: '0 0 4px 0' }
-const subtitleStyle = { fontSize: '14px', color: '#64748b', margin: 0 }
-const primaryBtnStyle = { padding: '12px 18px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '700' }
-const secondaryBtnStyle = { padding: '12px 18px', background: '#0f172a', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '700' }
-const tableContainerStyle = { background: 'white', border: '1px solid #e2e8f0', borderRadius: '16px', overflow: 'hidden' }
-const tableWrapperStyle = { overflowX: 'auto' }
-const tableStyle = { width: '100%', borderCollapse: 'collapse' }
-const thStyle = { textAlign: 'left', padding: '12px', fontSize: '12px', color: '#64748b', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }
-const tdStyle = { padding: '12px', borderBottom: '1px solid #f1f5f9', verticalAlign: 'top' }
-const trStyle = { background: 'white' }
-const actionBtnStyle = (color) => ({ padding: '8px 10px', borderRadius: '10px', border: 'none', cursor: 'pointer', fontWeight: '800', color: 'white', background: color })
-const emptyStateStyle = { padding: '18px', textAlign: 'center' }
-const emptyTextStyle = { margin: 0, color: '#94a3b8', fontWeight: '700' }
-const loadingContainerStyle = { textAlign: 'center', padding: '40px 16px' }
-const loadingTextStyle = { marginTop: '10px', fontSize: '14px', fontWeight: '700', color: '#64748b' }
-const spinnerStyle = { width: '40px', height: '40px', margin: '0 auto', border: '4px solid #f1f5f9', borderTop: '4px solid #10b981', borderRadius: '50%', animation: 'spin 1s linear infinite' }
-const modalOverlayStyle = { position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', zIndex: 999 }
-const modalStyle = { width: '100%', maxWidth: '680px', background: 'white', borderRadius: '18px', border: '1px solid #e2e8f0', overflow: 'hidden' }
-const modalHeaderStyle = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '1px solid #e2e8f0' }
-const modalTitleStyle = { margin: 0, fontSize: '16px', fontWeight: '900', color: '#0f172a' }
-const closeButtonStyle = { border: 'none', background: 'transparent', cursor: 'pointer', fontSize: '18px', fontWeight: '900', color: '#64748b' }
-const modalBodyStyle = { padding: '16px' }
-const modalFooterStyle = { padding: '14px 16px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '10px' }
-const labelStyle = { fontSize: '12px', fontWeight: '800', color: '#0f172a' }
-const inputStyle = { width: '100%', padding: '10px 12px', borderRadius: '12px', border: '1px solid #e2e8f0', outline: 'none', background: '#fff' }
-const formGridStyle = { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '12px' }
 </script>
 
 <style scoped>
-@keyframes spin { to { transform: rotate(360deg); } }
-.fade-in { animation: fadeIn .2s ease-out; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-.modal-content { box-shadow: 0 20px 60px rgba(0,0,0,0.25); }
-</style>
+/* ========== Page ========== */
+.bancaire-page {
+  padding: 0;
+}
 
+/* ========== Header ========== */
+.bancaire-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.bancaire-title {
+  font-size: 28px;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 4px 0;
+  letter-spacing: -0.5px;
+}
+.bancaire-subtitle {
+  font-size: 14px;
+  color: #64748b;
+  margin: 0;
+  font-weight: 500;
+}
+.header-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* ========== Buttons ========== */
+.btn {
+  padding: 10px 18px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.btn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+.btn:active {
+  transform: translateY(0);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+.btn--primary {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: #ffffff;
+}
+.btn--dark {
+  background: #0f172a;
+  color: #ffffff;
+}
+
+/* ========== Table Container ========== */
+.table-container {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  overflow: hidden;
+}
+.table-wrapper {
+  overflow-x: auto;
+}
+
+/* ========== Table ========== */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.data-table thead th {
+  text-align: left;
+  padding: 14px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  white-space: nowrap;
+}
+.data-table tbody tr {
+  transition: background 0.15s ease;
+}
+.data-table tbody tr:hover {
+  background: #f8fafc;
+}
+.data-table tbody td {
+  padding: 14px 16px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+  font-size: 14px;
+  color: #334155;
+}
+
+/* ========== Solde ========== */
+.solde {
+  font-weight: 900;
+  font-size: 14px;
+}
+.solde--positif {
+  color: #059669;
+}
+.solde--negatif {
+  color: #ef4444;
+}
+
+/* ========== Row Actions ========== */
+.row-actions {
+  display: flex;
+  gap: 8px;
+}
+.btn-action {
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 12px;
+  color: #ffffff;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.btn-action:hover {
+  opacity: 0.85;
+  transform: translateY(-1px);
+}
+.btn-action--edit {
+  background: #3b82f6;
+}
+.btn-action--delete {
+  background: #ef4444;
+}
+
+/* ========== Empty State ========== */
+.empty-state {
+  padding: 48px 16px;
+  text-align: center;
+}
+.empty-icon {
+  color: #cbd5e1;
+  margin-bottom: 12px;
+}
+.empty-text {
+  margin: 0 0 4px 0;
+  color: #64748b;
+  font-weight: 700;
+  font-size: 16px;
+}
+.empty-hint {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+/* ========== Loading ========== */
+.loading-state {
+  text-align: center;
+  padding: 48px 16px;
+}
+.spinner {
+  width: 40px;
+  height: 40px;
+  margin: 0 auto;
+  border: 4px solid #f1f5f9;
+  border-top: 4px solid #10b981;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.loading-text {
+  margin-top: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #64748b;
+}
+
+/* ========== Modal ========== */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 999;
+}
+.modal {
+  width: 100%;
+  max-width: 640px;
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+}
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e2e8f0;
+}
+.modal-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  color: #0f172a;
+}
+.modal-close {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 22px;
+  font-weight: 700;
+  color: #94a3b8;
+  line-height: 1;
+  transition: color 0.15s ease;
+}
+.modal-close:hover {
+  color: #ef4444;
+}
+.modal-body {
+  padding: 20px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.modal-footer {
+  padding: 14px 20px;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* ========== Form ========== */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+}
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.form-group--full {
+  grid-column: 1 / -1;
+}
+.form-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #334155;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.form-input {
+  width: 100%;
+  padding: 11px 14px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  outline: none;
+  background: #ffffff;
+  font-size: 14px;
+  color: #0f172a;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.form-input:focus {
+  border-color: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+}
+
+/* ========== Animations ========== */
+.fade-in {
+  animation: fadeIn 0.25s ease-out;
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Modal transition */
+.modal-enter-active { transition: opacity 0.2s ease; }
+.modal-enter-active .modal { transition: transform 0.2s ease; }
+.modal-leave-active { transition: opacity 0.15s ease; }
+.modal-leave-active .modal { transition: transform 0.15s ease; }
+.modal-enter-from { opacity: 0; }
+.modal-enter-from .modal { transform: scale(0.95); }
+.modal-leave-to { opacity: 0; }
+.modal-leave-to .modal { transform: scale(0.95); }
+
+/* ========== Responsive ========== */
+@media (max-width: 768px) {
+  .bancaire-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .bancaire-title {
+    font-size: 22px;
+  }
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+  .modal {
+    max-width: 100%;
+  }
+}
+</style>

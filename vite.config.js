@@ -6,16 +6,12 @@ export default defineConfig({
   plugins: [vue()],
   server: {
     proxy: {
-      // En dev, les appels à /api/* sont redirigés vers le serveur distant (évite CORS)
+      // En dev, les appels à /api/* sont proxifiés vers le serveur distant
       '/api': {
         target: 'https://www.aliadjame.com',
         changeOrigin: true,
         secure: true,
         ws: false,
-        rewrite: (path) => {
-          // Garder le chemin tel quel pour éviter les doubles redirections
-          return path;
-        },
       },
     },
   },

@@ -235,7 +235,7 @@ private function generateJWT($user) {
     $audience_claim  = "rg_app_users";
     $issuedat_claim  = time();
     $notbefore_claim = $issuedat_claim;
-    $expire_claim    = $issuedat_claim + (60 * 60 * 24); // 24h
+    $expire_claim    = $issuedat_claim + (60 * 60 * 24 * 7); // 7 jours
 
     $payload = [
         "iss" => $issuer_claim,

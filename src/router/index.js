@@ -212,9 +212,7 @@ const routes = [
     name: "produits",
     component: () => import("../views/app_produits/Liste_produits.vue"),
     meta: { 
-      requiresAuth: true,
-      requiresAccess: 'users',
-      requiresAdmin: true
+      requiresAuth: true
     }
   },
   {
