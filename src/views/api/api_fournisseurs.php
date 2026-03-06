@@ -39,10 +39,12 @@ try {
     $method = $_SERVER['REQUEST_METHOD'];
     $action = $_GET['action'] ?? 'list';
 
-    // Nouvelle logique : récupération de l'utilisateur et de l'entreprise via le token JWT
+    // Récupération de l'utilisateur et de l'entreprise via le token JWT
     $user = getUserFromToken();
     $user_id = $user['id'];
-    $id_entreprise = $user['id_entreprise'];
+    $id_entreprise = $user['id_entreprise'] ?? null;
+    $access = $user['access'] ?? [];
+    $is_admin = is_array($access) && in_array('ALL', $access);
 
     if ($method === 'GET') {
         if ($action === 'get_fournisseur') {
@@ -107,9 +109,14 @@ try {
         }
         
         if ($action === 'list_fournisseurs') {
-            // Nouvelle logique : filtrer par entreprise et utilisateur depuis le token
-            $sql = "SELECT *, id_fournisseur as id FROM app_fournisseurs WHERE id_entreprise = ? AND (create_by = ? OR create_by IS NULL) ORDER BY date_creation DESC, nom ASC";
-            $params = [$id_entreprise, $user_id];
+            // Lister tous les fournisseurs de l'entreprise (comme clients/produits), pas seulement ceux créés par l'utilisateur
+            $sql = "SELECT *, id_fournisseur as id FROM app_fournisseurs WHERE 1=1";
+            $params = [];
+            if (!$is_admin && $id_entreprise !== null) {
+                $sql .= " AND (id_entreprise = ? OR id_entreprise IS NULL)";
+                $params[] = $id_entreprise;
+            }
+            $sql .= " ORDER BY nom ASC";
             $result = $db->query($sql, $params);
             foreach ($result as &$fournisseur) {
                 if (!isset($fournisseur['id'])) {
@@ -141,8 +148,13 @@ try {
                     0 as commandes_en_cours,
                     0 as total_achats,
                     0 as total_dettes
-                    FROM app_fournisseurs f WHERE f.id_entreprise = ? AND (f.create_by = ? OR f.create_by IS NULL)";
-                $result = $db->query($sql, [$id_entreprise, $user_id]);
+                    FROM app_fournisseurs f WHERE 1=1";
+                $params_stats = [];
+                if (!$is_admin && $id_entreprise !== null) {
+                    $sql .= " AND (f.id_entreprise = ? OR f.id_entreprise IS NULL)";
+                    $params_stats[] = $id_entreprise;
+                }
+                $result = $db->query($sql, $params_stats);
                 if (!empty($result)) {
                     $stats['total_fournisseurs'] = intval($result[0]['total_fournisseurs'] ?? 0);
                     $stats['fournisseurs_actifs'] = intval($result[0]['fournisseurs_actifs'] ?? 0);

@@ -56,7 +56,7 @@
       </div>
       <select v-model="filterCat" :style="filterSelectStyle">
         <option value="">Toutes categories</option>
-        <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.libelle }}</option>
+        <option v-for="c in categoriesForSelect" :key="c.id" :value="c.id">{{ c.libelle }}</option>
       </select>
       <select v-model="filterStatut" :style="filterSelectStyle">
         <option value="">Tous les statuts</option>
@@ -225,14 +225,31 @@
 
       <!-- VUE CATEGORIES -->
       <div v-if="activeView === 'categories'" class="p-fade" style="animation-delay:.14s">
+        <!-- Barre d'actions : catégories par défaut + ajouter une catégorie -->
+        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:20px;padding:16px;background:#f8fafc;border-radius:12px;border:1px solid #e2e8f0">
+          <span style="font-size:14px;font-weight:700;color:#475569">Catégories</span>
+          <button :style="secBtnStyle" @click="openCategorieModal()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+            Ajouter une catégorie
+          </button>
+          <button :style="defaultCatsBtnStyle" :disabled="seedingDefaults" @click="addDefaultCategories">
+            <span v-if="seedingDefaults" :style="spinSm"></span>
+            <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h16a2 2 0 002-2V8a2 2 0 00-2-2h-7.93a2 2 0 01-1.66-.9l-.82-1.2A2 2 0 007.93 3H4a2 2 0 00-2 2v13c0 1.1.9 2 2 2z"/></svg>
+            {{ seedingDefaults ? 'Ajout...' : 'Utiliser les catégories par défaut' }}
+          </button>
+        </div>
         <div :style="catGridStyle">
           <div v-if="!categories.length" :style="{ ...emptyStateStyle, gridColumn: '1/-1' }">
             <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.5"><path d="M4 20h16a2 2 0 002-2V8a2 2 0 00-2-2h-7.93a2 2 0 01-1.66-.9l-.82-1.2A2 2 0 007.93 3H4a2 2 0 00-2 2v13c0 1.1.9 2 2 2z"/></svg>
             <p style="font-size:16px;font-weight:700;color:#475569;margin:12px 0 8px">Aucune categorie creee</p>
-            <button :style="primaryBtnStyle" @click="openCategorieModal()">Creer la premiere categorie</button>
+            <p style="font-size:13px;color:#94a3b8;margin:0 0 14px">Cliquez sur &laquo; Utiliser les catégories par défaut &raquo; ou &laquo; Ajouter une catégorie &raquo;</p>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
+              <button :style="primaryBtnStyle" @click="addDefaultCategories" :disabled="seedingDefaults">Utiliser les catégories par défaut</button>
+              <button :style="primaryBtnStyle" @click="openCategorieModal()">Creer une categorie</button>
+            </div>
           </div>
 
-          <div v-for="(c, i) in categories" :key="c.id" :style="getCatCard(i)" @mouseenter="hovCat = i" @mouseleave="hovCat = null">
+          <div v-for="(c, i) in categories" :key="c.id ?? c.id_categorie" :style="getCatCard(i)" @mouseenter="hovCat = i" @mouseleave="hovCat = null">
             <div :style="{ height:'3px', background: CARD_COLORS[i % CARD_COLORS.length] }"></div>
             <div style="padding:20px">
               <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
@@ -243,22 +260,21 @@
                   <button :style="iconBtn('#3b82f6')" @click="openEditCategorieModal(c)" title="Modifier">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                   </button>
-                  <button :style="iconBtn('#ef4444')" @click="deleteCategorie(c.id)" title="Supprimer">
+                  <button :style="iconBtn('#ef4444')" @click="deleteCategorie(c.id ?? c.id_categorie)" title="Supprimer">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/></svg>
                   </button>
                 </div>
               </div>
               <h3 style="font-size:17px;font-weight:800;color:#0f172a;margin:0 0 6px;letter-spacing:-0.02em">{{ c.libelle }}</h3>
-              <p style="font-size:12px;color:#94a3b8;margin:0 0 14px">{{ getSubCatsForCat(c.id).length }} sous-categorie(s) &middot; {{ getProduitsCountForCat(c.id) }} produit(s)</p>
+              <p style="font-size:12px;color:#94a3b8;margin:0 0 14px">{{ getSubCatsForCat(c.id ?? c.id_categorie).length }} sous-categorie(s) &middot; {{ getProduitsCountForCat(c.id ?? c.id_categorie) }} produit(s)</p>
 
-              <!-- Sous-categories -->
               <div style="background:#f8fafc;border-radius:10px;padding:12px;border:1px solid #f1f5f9">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                   <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em">Sous-categories</div>
-                  <button :style="addSubCatBtn" @click="openSousCategorieModal(c.id)">+ Ajouter</button>
+                  <button :style="addSubCatBtn" @click="openSousCategorieModal(c.id ?? c.id_categorie)">+ Ajouter</button>
                 </div>
-                <div v-if="!getSubCatsForCat(c.id).length" style="font-size:12px;color:#cbd5e1;font-weight:500">Aucune sous-categorie</div>
-                <div v-for="sc in getSubCatsForCat(c.id)" :key="sc.id" style="display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:5px;padding:5px 8px;background:white;border-radius:6px;border:1px solid #f1f5f9">
+                <div v-if="!getSubCatsForCat(c.id ?? c.id_categorie).length" style="font-size:12px;color:#cbd5e1;font-weight:500">Aucune sous-categorie</div>
+                <div v-for="sc in getSubCatsForCat(c.id ?? c.id_categorie)" :key="sc.id" style="display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:5px;padding:5px 8px;background:white;border-radius:6px;border:1px solid #f1f5f9">
                   <span style="font-weight:600;color:#475569">{{ sc.libelle }}</span>
                   <div style="display:flex;gap:4px;align-items:center">
                     <span v-if="sc.rayon" style="font-size:10px;color:#94a3b8">R:{{ sc.rayon }}</span>
@@ -309,8 +325,8 @@
                   <input v-model="produitForm.libelle" :style="fInput" placeholder="Ex: Riz Parfume 5kg"/>
                 </div>
                 <div :style="fGroup">
-                  <label :style="fLabel">SKU</label>
-                  <input v-model="produitForm.sku" :style="fInput" placeholder="SKU-001"/>
+                  <label :style="fLabel">SKU (auto-genere a partir du libelle)</label>
+                  <input v-model="produitForm.sku" :style="{ ...fInput, backgroundColor: editingProduit ? undefined : '#f8fafc', color: editingProduit ? undefined : '#64748b' }" :readonly="!editingProduit" placeholder="Ex: RI512345"/>
                 </div>
                 <!-- Ligne 2 : Reference + QR Code -->
                 <div :style="fGroup">
@@ -321,14 +337,22 @@
                   <label :style="fLabel">QR Code</label>
                   <input v-model="produitForm.qr_code" :style="fInput" placeholder="QR-..."/>
                 </div>
-                <!-- Ligne 3 : Categorie + Sous-categorie (saisie libre) -->
+                <!-- Ligne 3 : Categorie (liste page Catégories ou saisie libre) + Sous-categorie -->
                 <div :style="fGroup">
                   <label :style="fLabel">Categorie</label>
-                  <input v-model="produitForm.categorie_nom" :style="fInput" placeholder="Ex: Alimentation"/>
+                  <select v-model="produitForm.id_categorie" :style="{ ...fInput, minHeight:'42px' }" @change="onCategorieSelectChange">
+                    <option :value="null">Aucune categorie</option>
+                    <option v-for="(c, idx) in categoriesForSelect" :key="c.id ?? idx" :value="c.id">{{ c.libelle }}</option>
+                  </select>
+                  <p style="font-size:11px;color:#94a3b8;margin-top:4px">Ou saisir ci-dessous une nouvelle catégorie</p>
                 </div>
                 <div :style="fGroup">
-                  <label :style="fLabel">Sous-categorie</label>
-                  <input v-model="produitForm.sous_categorie_nom" :style="fInput" placeholder="Ex: Riz et cereales"/>
+                  <label :style="fLabel">Catégorie (saisie libre)</label>
+                  <input v-model="produitForm.categorie_libelle" :style="fInput" placeholder="Ex: Électronique, Alimentation..." @input="onCategorieLibelleInput"/>
+                </div>
+                <div :style="fGroup">
+                  <label :style="fLabel">Sous-categorie (saisie libre)</label>
+                  <input v-model="produitForm.sous_categorie_nom" :style="fInput" placeholder="Ex: Smartphones, Riz..."/>
                 </div>
                 <!-- Ligne 4 : Unite de mesure + Marque -->
                 <div :style="fGroup">
@@ -420,7 +444,10 @@
                 </div>
                 <div :style="fGroup">
                   <label :style="fLabel">Entrepot</label>
-                  <input v-model="produitForm.entrepot" :style="fInput" placeholder="Magasin principal"/>
+                  <select v-model="produitForm.entrepot" :style="fInput">
+                    <option value="">Aucun entrepot</option>
+                    <option v-for="e in entrepots" :key="e.id" :value="e.nom">{{ e.nom }}{{ e.code ? ' (' + e.code + ')' : '' }}</option>
+                  </select>
                 </div>
                 <div :style="fGroup">
                   <label :style="fLabel">Peremption</label>
@@ -546,13 +573,15 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import SidebarLayout from '../SidebarLayout.vue'
 import { uploadToCloudinary } from '../../services/cloudinaryService.js'
 
 // ---- Config : passer par le proxy Vite (/api → aliadjame.com) pour éviter CORS en dev ----
 const API_BASE = '/api/api_produit.php'
 const UNITES = ['unite', 'kg', 'g', 'litre', 'ml', 'carton', 'sachet', 'boite', 'piece', 'metre', 'sac']
+
+// Liste de catégories par défaut (affichée dans le select si l’API n’en a pas encore)
 const CARD_COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#ec4899', '#06b6d4', '#84cc16']
 
 const getHeaders = () => ({
@@ -586,11 +615,13 @@ const editingCategorie  = ref(null)
 const savingProduit         = ref(false)
 const savingCategorie       = ref(false)
 const savingSousCategorie   = ref(false)
+const seedingDefaults       = ref(false)
 
 const produits          = ref([])
 const categories        = ref([])
 const sousCategories    = ref([])
 const fournisseurs      = ref([])
+const entrepots         = ref([])
 const loadingProduits   = ref(false)
 const errorProduits     = ref(null)
 const imageFile         = ref(null)
@@ -603,7 +634,7 @@ const emptyProduitForm = () => ({
   description: '', prix_achat: 0, prix_vente: 0, image: '',
   unite_mesure: 'unite', peremption: '', statut: 'actif', marque: '',
   entrepot: '', quantite_init: 0, seuil_alerte: 0,
-  categorie_nom: '', sous_categorie_nom: '',
+  categorie_nom: '', sous_categorie_nom: '', categorie_libelle: '',
   id_categorie: null, id_sous_categorie: null, id_fournisseur: null
 })
 
@@ -632,6 +663,32 @@ const filteredProduits = computed(() => {
 const filteredSousCategories = computed(() => {
   if (!produitForm.id_categorie) return sousCategories.value
   return sousCategories.value.filter(sc => sc.id_categorie == produitForm.id_categorie)
+})
+
+// Liste pour le select catégorie : API d’abord, sinon liste par défaut (toujours une liste déroulante remplie)
+const categoriesForSelect = computed(() => {
+  return (categories.value || []).map(c => ({
+    id: c.id ?? c.id_categorie,
+    libelle: (c.libelle || '').trim()
+  }))
+})
+
+// Generation automatique du SKU : 2 premieres lettres + derniere lettre + 5 chiffres aleatoires (comme page Produits magasin)
+const generateSku = (libelle) => {
+  if (!libelle || String(libelle).trim().length < 2) return ''
+  const clean = String(libelle).trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+  if (clean.length < 2) return ''
+  const prefix = clean.substring(0, 2)
+  const last = clean.charAt(clean.length - 1)
+  const random = Math.floor(10000 + Math.random() * 90000)
+  return `${prefix}${last}${random}`
+}
+
+// Auto-generer le SKU quand le libelle change (en creation uniquement)
+watch(() => produitForm.libelle, (newVal) => {
+  if (!editingProduit.value) {
+    produitForm.sku = generateSku(newVal)
+  }
 })
 
 const statsCards = computed(() => [
@@ -685,7 +742,17 @@ const toast = (msg) => { toastMsg.value = msg; showToast.value = true; setTimeou
 
 const getSubCatsForCat = (catId) => sousCategories.value.filter(sc => sc.id_categorie == catId)
 const getProduitsCountForCat = (catId) => produits.value.filter(p => p.id_categorie == catId).length
-const onCategorieChange = () => { produitForm.id_sous_categorie = null }
+const onCategorieChange = () => {
+  produitForm.id_sous_categorie = null
+  produitForm.sous_categorie_nom = ''
+}
+const onCategorieSelectChange = () => {
+  onCategorieChange()
+  if (produitForm.id_categorie) produitForm.categorie_libelle = ''
+}
+const onCategorieLibelleInput = () => {
+  if ((produitForm.categorie_libelle || '').trim()) produitForm.id_categorie = null
+}
 
 // ---- API Calls ----
 const loadProduits = async () => {
@@ -693,6 +760,12 @@ const loadProduits = async () => {
   errorProduits.value = null
   try {
     const res = await fetch(`${API_BASE}?action=list`, { headers: getHeaders(), credentials: 'include' })
+    if (res.status === 401) {
+      localStorage.removeItem('token')
+      localStorage.removeItem('isAuthenticated')
+      window.location.href = '/login'
+      return
+    }
     const data = await parseJsonOrText(res)
     if (!data.success) throw new Error(data.error || 'Erreur serveur')
     produits.value = data.data || []
@@ -707,25 +780,73 @@ const loadProduits = async () => {
 const loadCategories = async () => {
   try {
     const res = await fetch(`${API_BASE}?action=list_categories`, { headers: getHeaders(), credentials: 'include' })
+    if (res.status === 401) {
+      localStorage.removeItem('token')
+      localStorage.removeItem('isAuthenticated')
+      window.location.href = '/login'
+      return
+    }
     const data = await parseJsonOrText(res)
-    if (data.success) categories.value = data.data || []
-  } catch (err) { console.error('[Produits] loadCategories error:', err) }
+    if (data.success && Array.isArray(data.data)) categories.value = data.data
+    else categories.value = []
+  } catch (err) {
+    console.error('[Produits] loadCategories error:', err)
+    categories.value = []
+  }
 }
 
 const loadSousCategories = async () => {
   try {
     const res = await fetch(`${API_BASE}?action=list_sous_categories`, { headers: getHeaders(), credentials: 'include' })
+    if (res.status === 401) {
+      localStorage.removeItem('token')
+      localStorage.removeItem('isAuthenticated')
+      window.location.href = '/login'
+      return
+    }
     const data = await parseJsonOrText(res)
-    if (data.success) sousCategories.value = data.data || []
-  } catch (err) { console.error('[Produits] loadSousCategories error:', err) }
+    if (data.success && Array.isArray(data.data)) sousCategories.value = data.data
+    else sousCategories.value = []
+  } catch (err) {
+    console.error('[Produits] loadSousCategories error:', err)
+    sousCategories.value = []
+  }
 }
 
 const loadFournisseurs = async () => {
   try {
     const res = await fetch(`${API_BASE}?action=list_fournisseurs`, { headers: getHeaders(), credentials: 'include' })
+    if (res.status === 401) {
+      localStorage.removeItem('token')
+      localStorage.removeItem('isAuthenticated')
+      window.location.href = '/login'
+      return
+    }
     const data = await parseJsonOrText(res)
-    if (data.success) fournisseurs.value = data.data || []
-  } catch (err) { console.error('[Produits] loadFournisseurs error:', err) }
+    if (data.success && Array.isArray(data.data)) fournisseurs.value = data.data
+    else fournisseurs.value = []
+  } catch (err) {
+    console.error('[Produits] loadFournisseurs error:', err)
+    fournisseurs.value = []
+  }
+}
+
+const loadEntrepots = async () => {
+  try {
+    const res = await fetch(`${API_BASE}?action=list_entrepots`, { headers: getHeaders(), credentials: 'include' })
+    if (res.status === 401) {
+      localStorage.removeItem('token')
+      localStorage.removeItem('isAuthenticated')
+      window.location.href = '/login'
+      return
+    }
+    const data = await parseJsonOrText(res)
+    if (data.success && Array.isArray(data.data)) entrepots.value = data.data
+    else entrepots.value = []
+  } catch (err) {
+    console.error('[Produits] loadEntrepots error:', err)
+    entrepots.value = []
+  }
 }
 
 // ---- CRUD Produits ----
@@ -743,9 +864,10 @@ const openProduitModal = (p) => {
       seuil_alerte: p.seuil_alerte || 0,
       categorie_nom: p.categorie_nom || '',
       sous_categorie_nom: p.sous_categorie_nom || '',
-      id_categorie: p.id_categorie || null,
-      id_sous_categorie: p.id_sous_categorie || null,
-      id_fournisseur: p.id_fournisseur || null
+      categorie_libelle: '',
+      id_categorie: p.id_categorie != null ? Number(p.id_categorie) : null,
+      id_sous_categorie: p.id_sous_categorie != null ? Number(p.id_sous_categorie) : null,
+      id_fournisseur: p.id_fournisseur != null ? Number(p.id_fournisseur) : null
     })
     imagePreview.value = p.image || null
   } else {
@@ -753,6 +875,9 @@ const openProduitModal = (p) => {
     imagePreview.value = null
     imageFile.value = null
   }
+  if (categories.value.length === 0) loadCategories()
+  if (fournisseurs.value.length === 0) loadFournisseurs()
+  if (entrepots.value.length === 0) loadEntrepots()
   showProduitModal.value = true
 }
 
@@ -773,7 +898,12 @@ const removeImage = () => {
 }
 
 const saveProduit = async () => {
-  if (!produitForm.libelle) { alert('Le libelle est requis'); return }
+  const lib = (produitForm.libelle || '').trim()
+  if (!lib) { alert('Le libellé est requis'); return }
+  const pa = Number(produitForm.prix_achat)
+  const pv = Number(produitForm.prix_vente)
+  if (Number.isNaN(pa) || pa < 0) { alert('Le prix d\'achat est requis et doit être >= 0'); return }
+  if (Number.isNaN(pv) || pv < 0) { alert('Le prix de vente est requis et doit être >= 0'); return }
   savingProduit.value = true
   try {
     // Upload image via Cloudinary si un fichier a ete selectionne
@@ -794,26 +924,38 @@ const saveProduit = async () => {
     const action = isEdit ? 'update_produit' : 'add_produit'
     const body = { ...produitForm }
     if (isEdit) body.id_produit = editingProduit.value.id
+    const saisieLibre = (body.categorie_libelle || '').trim()
+    if (saisieLibre) {
+      body.categorie_libelle = saisieLibre
+      body.id_categorie = null
+      body.id_sous_categorie = null
+    } else {
+      body.id_categorie = body.id_categorie != null && body.id_categorie !== '' ? Number(body.id_categorie) : null
+    }
+    const sousLib = (body.sous_categorie_nom || '').trim()
+    if (sousLib) body.sous_categorie_libelle = sousLib
+    body.id_fournisseur = body.id_fournisseur != null && body.id_fournisseur !== '' ? Number(body.id_fournisseur) : null
 
     const res = await fetch(`${API_BASE}?action=${action}`, {
       method: 'POST', headers: getHeaders(), credentials: 'include',
       body: JSON.stringify(body)
     })
     const data = await parseJsonOrText(res)
-    if (!data.success) throw new Error(data.error || 'Erreur serveur')
+    if (!data.success) throw new Error(data.details || data.error || 'Erreur serveur')
 
     toast(isEdit ? 'Produit modifie avec succes' : 'Produit cree avec succes')
     showProduitModal.value = false
     await loadProduits()
   } catch (err) {
-    alert('Erreur: ' + err.message)
+    const msg = err.message || String(err)
+    alert('Erreur: ' + msg)
   } finally {
     savingProduit.value = false
   }
 }
 
 const deleteProduit = async (id) => {
-  if (!confirm('Archiver ce produit ?')) return
+  if (!confirm('Supprimer ce produit ? Il sera archivé et retiré de la liste.')) return
   try {
     const res = await fetch(`${API_BASE}?action=delete_produit`, {
       method: 'POST', headers: getHeaders(), credentials: 'include',
@@ -821,7 +963,7 @@ const deleteProduit = async (id) => {
     })
     const data = await parseJsonOrText(res)
     if (!data.success) throw new Error(data.error || 'Erreur serveur')
-    toast('Produit archive')
+    toast('Produit supprimé')
     await loadProduits()
   } catch (err) {
     alert('Erreur: ' + err.message)
@@ -839,6 +981,25 @@ const openEditCategorieModal = (c) => {
   editingCategorie.value = c
   categorieForm.libelle = c.libelle
   showCategorieModal.value = true
+}
+
+const addDefaultCategories = async () => {
+  seedingDefaults.value = true
+  try {
+    const res = await fetch(`${API_BASE}?action=seed_default_categories`, {
+      method: 'POST', headers: getHeaders(), credentials: 'include',
+      body: JSON.stringify({})
+    })
+    const data = await parseJsonOrText(res)
+    if (!data.success) throw new Error(data.error || 'Erreur serveur')
+    const added = data.data?.added ?? 0
+    toast(added > 0 ? `${added} categorie(s) par defaut ajoutee(s)` : 'Catégories par défaut déjà présentes')
+    await loadCategories()
+  } catch (err) {
+    alert('Erreur: ' + err.message)
+  } finally {
+    seedingDefaults.value = false
+  }
 }
 
 const saveCategorie = async () => {
@@ -954,6 +1115,7 @@ const tabCount = key => ({
 
 const primaryBtnStyle = { display:'flex', alignItems:'center', gap:'8px', padding:'12px 20px', background:'linear-gradient(135deg,#0ea5e9,#0284c7)', border:'none', borderRadius:'11px', fontSize:'14px', fontWeight:'700', color:'white', cursor:'pointer', boxShadow:'0 4px 12px rgba(14,165,233,0.25)' }
 const secBtnStyle     = { display:'flex', alignItems:'center', gap:'8px', padding:'11px 18px', background:'white', border:'1px solid #e2e8f0', borderRadius:'11px', fontSize:'13px', fontWeight:'700', color:'#475569', cursor:'pointer' }
+const defaultCatsBtnStyle = { display:'flex', alignItems:'center', gap:'8px', padding:'11px 18px', background:'linear-gradient(135deg,#8b5cf6,#7c3aed)', color:'white', border:'none', borderRadius:'11px', fontSize:'13px', fontWeight:'700', cursor:'pointer', boxShadow:'0 2px 8px rgba(139,92,246,0.3)' }
 
 const statsRow = { display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))', gap:'12px', marginBottom:'20px' }
 const statCard = { background:'white', borderRadius:'14px', padding:'18px', display:'flex', alignItems:'center', gap:'13px', border:'1px solid #f1f5f9', boxShadow:'0 1px 4px rgba(0,0,0,0.05)' }
@@ -1066,7 +1228,7 @@ const toastStyle = { position:'fixed', bottom:'28px', left:'50%', transform:'tra
 
 // ---- Init ----
 onMounted(async () => {
-  await Promise.all([loadProduits(), loadCategories(), loadSousCategories(), loadFournisseurs()])
+  await Promise.all([loadProduits(), loadCategories(), loadSousCategories(), loadFournisseurs(), loadEntrepots()])
 })
 </script>
 
