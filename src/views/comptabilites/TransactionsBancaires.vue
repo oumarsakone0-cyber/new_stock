@@ -201,7 +201,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import SidebarLayout from '../SidebarLayout.vue'
 import { useAuthStore } from '../../stores/authStore'
-import { getApiBaseUrl } from '../../services/api.js'
+import { getApiBaseUrl, getComptesEtTransactions, getTransactions, addTransaction, updateTransaction, deleteTransaction as apiDeleteTransaction } from '../../services/api.js'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -316,52 +316,29 @@ const loadTransactions = async () => {
 const loadComptesEtTransactions = async () => {
   loading.value = true
   try {
-    const params = new URLSearchParams()
-    if (filters.value.date_debut) params.set('date_debut', filters.value.date_debut)
-    if (filters.value.date_fin) params.set('date_fin', filters.value.date_fin)
-    if (filters.value.id_compte) params.set('id_compte', filters.value.id_compte)
-    if (filters.value.sens) params.set('sens', filters.value.sens)
-    if (filters.value.search) params.set('search', filters.value.search)
-
-    const baseParams = `${getUserParams()}&${params.toString()}${randomParam()}`
-
-    // 1) Appel combine (comptes + transactions)
-    const urlCombined = `${API_BASE_URL}/api_gestion_bancaire.php?action=list_comptes_et_transactions${baseParams}`
-    const resCombined = await fetch(urlCombined, { headers: getAuthHeaders() })
-    if (resCombined.status === 401) {
-      localStorage.removeItem('token')
-      localStorage.removeItem('isAuthenticated')
-      router.push('/login')
-      return
+    const params = {
+      ...filters.value,
+      user_id: authStore.user?.id,
+      id_entreprise: authStore.user?.id_entreprise
     }
-    const dataCombined = await resCombined.json()
-
-    if (dataCombined.success && dataCombined.hasOwnProperty('comptes')) {
-      comptes.value = Array.isArray(dataCombined.comptes) ? dataCombined.comptes : []
+    const { data } = await getComptesEtTransactions(params)
+    if (data?.success && data.hasOwnProperty('comptes')) {
+      comptes.value = Array.isArray(data.comptes) ? data.comptes : []
     }
-    const txFromCombined = Array.isArray(dataCombined?.transactions) ? dataCombined.transactions : []
-
-    // 2) Si pas de transactions dans la reponse combinee, appeler list_transactions (requete visible dans Network)
+    const txFromCombined = Array.isArray(data?.transactions) ? data.transactions : []
     if (txFromCombined.length > 0) {
       transactions.value = txFromCombined
     } else {
-      const urlTx = `${API_BASE_URL}/api_gestion_bancaire.php?action=list_transactions${baseParams}`
-      const resTx = await fetch(urlTx, { headers: getAuthHeaders() })
-      if (resTx.status === 401) {
-        localStorage.removeItem('token')
-        localStorage.removeItem('isAuthenticated')
-        router.push('/login')
-        return
-      }
-      const dataTx = await resTx.json()
-      const txList = dataTx.success && Array.isArray(dataTx.data) ? dataTx.data : []
+      // fallback si pas de transactions dans la réponse combinée
+      const txRes = await getTransactions(params)
+      const txList = txRes.data?.success && Array.isArray(txRes.data.data) ? txRes.data.data : []
       const isTx = txList.length === 0 || ('date_transaction' in (txList[0] || {}) && !('banque' in (txList[0] || {})))
       transactions.value = isTx ? txList : []
     }
   } catch (e) {
     console.error(e)
-    await loadComptes()
-    await loadTransactions()
+    comptes.value = []
+    transactions.value = []
   } finally {
     loading.value = false
   }
@@ -404,21 +381,14 @@ const saveTransaction = async () => {
   }
   saving.value = true
   try {
-    const action = editing.value ? 'update_transaction' : 'add_transaction'
     const payload = { ...form.value, user_id: authStore.user?.id, id_entreprise: authStore.user?.id_entreprise }
-    const res = await fetch(`${API_BASE_URL}/api_gestion_bancaire.php?action=${action}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-      body: JSON.stringify(payload)
-    })
-    if (res.status === 401) {
-      localStorage.removeItem('token')
-      localStorage.removeItem('isAuthenticated')
-      router.push('/login')
-      return
+    let res
+    if (editing.value) {
+      res = await updateTransaction(payload)
+    } else {
+      res = await addTransaction(payload)
     }
-    const data = await res.json()
-    if (!data.success) throw new Error(data.error || data.message || 'Erreur')
+    if (!res.data?.success) throw new Error(res.data?.error || res.data?.message || 'Erreur')
     closeModal()
     await loadComptesEtTransactions()
   } catch (e) {
@@ -432,19 +402,8 @@ const saveTransaction = async () => {
 const deleteTransaction = async (t) => {
   if (!confirm('Supprimer cette transaction ?')) return
   try {
-    const res = await fetch(`${API_BASE_URL}/api_gestion_bancaire.php?action=delete_transaction`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-      body: JSON.stringify({ id_transaction: t.id, user_id: authStore.user?.id, id_entreprise: authStore.user?.id_entreprise })
-    })
-    if (res.status === 401) {
-      localStorage.removeItem('token')
-      localStorage.removeItem('isAuthenticated')
-      router.push('/login')
-      return
-    }
-    const data = await res.json()
-    if (!data.success) throw new Error(data.error || data.message || 'Erreur')
+    const res = await apiDeleteTransaction(t.id)
+    if (!res.data?.success) throw new Error(res.data?.error || res.data?.message || 'Erreur')
     await loadComptesEtTransactions()
   } catch (e) {
     console.error(e)

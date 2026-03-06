@@ -1,3 +1,28 @@
+// ==================== GESTION BANCAIRE ====================
+// Charger comptes bancaires ET transactions (pour dashboard)
+export const getComptesEtTransactions = (params = {}) => {
+  return api.get('/api_gestion_bancaire.php?action=list_comptes_et_transactions', { params });
+};
+
+// Charger uniquement les transactions bancaires
+export const getTransactions = (params = {}) => {
+  return api.get('/api_gestion_bancaire.php?action=list_transactions', { params });
+};
+
+// Ajouter une transaction bancaire
+export const addTransaction = (payload) => {
+  return api.post('/api_gestion_bancaire.php?action=add_transaction', payload);
+};
+
+// Modifier une transaction bancaire
+export const updateTransaction = (payload) => {
+  return api.post('/api_gestion_bancaire.php?action=update_transaction', payload);
+};
+
+// Supprimer une transaction bancaire
+export const deleteTransaction = (id) => {
+  return api.post('/api_gestion_bancaire.php?action=delete_transaction', { id });
+};
 // Récupérer toutes les catégories de produits
 export const getCategories = () => {
   return api.get('api_produit.php?action=list_categories');
