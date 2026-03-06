@@ -337,22 +337,20 @@
                   <label :style="fLabel">QR Code</label>
                   <input v-model="produitForm.qr_code" :style="fInput" placeholder="QR-..."/>
                 </div>
-                <!-- Ligne 3 : Categorie (liste page Catégories ou saisie libre) + Sous-categorie -->
+                <!-- Ligne 3 : Catégorie + Sous-catégorie -->
                 <div :style="fGroup">
-                  <label :style="fLabel">Categorie</label>
-                  <select v-model="produitForm.id_categorie" :style="{ ...fInput, minHeight:'42px' }" @change="onCategorieSelectChange">
-                    <option :value="null">Aucune categorie</option>
-                    <option v-for="(c, idx) in categoriesForSelect" :key="c.id ?? idx" :value="c.id">{{ c.libelle }}</option>
+                  <label :style="fLabel">Catégorie</label>
+                  <select v-model="produitForm.id_categorie" :style="fInput" @change="onCategorieSelectChange">
+                    <option :value="null">Aucune</option>
+                    <option v-for="c in categoriesForSelect" :key="c.id" :value="c.id">{{ c.libelle }}</option>
                   </select>
-                  <p style="font-size:11px;color:#94a3b8;margin-top:4px">Ou saisir ci-dessous une nouvelle catégorie</p>
                 </div>
                 <div :style="fGroup">
-                  <label :style="fLabel">Catégorie (saisie libre)</label>
-                  <input v-model="produitForm.categorie_libelle" :style="fInput" placeholder="Ex: Électronique, Alimentation..." @input="onCategorieLibelleInput"/>
-                </div>
-                <div :style="fGroup">
-                  <label :style="fLabel">Sous-categorie (saisie libre)</label>
-                  <input v-model="produitForm.sous_categorie_nom" :style="fInput" placeholder="Ex: Smartphones, Riz..."/>
+                  <label :style="fLabel">Sous-catégorie</label>
+                  <select v-model="produitForm.id_sous_categorie" :style="fInput" :disabled="!produitForm.id_categorie">
+                    <option :value="null">Aucune</option>
+                    <option v-for="sc in filteredSousCategories" :key="sc.id_sous_categorie" :value="sc.id_sous_categorie">{{ sc.libelle }}</option>
+                  </select>
                 </div>
                 <!-- Ligne 4 : Unite de mesure + Marque -->
                 <div :style="fGroup">
@@ -634,7 +632,7 @@ const emptyProduitForm = () => ({
   description: '', prix_achat: 0, prix_vente: 0, image: '',
   unite_mesure: 'unite', peremption: '', statut: 'actif', marque: '',
   entrepot: '', quantite_init: 0, seuil_alerte: 0,
-  categorie_nom: '', sous_categorie_nom: '', categorie_libelle: '',
+  categorie_nom: '', sous_categorie_nom: '',
   id_categorie: null, id_sous_categorie: null, id_fournisseur: null
 })
 
@@ -748,10 +746,6 @@ const onCategorieChange = () => {
 }
 const onCategorieSelectChange = () => {
   onCategorieChange()
-  if (produitForm.id_categorie) produitForm.categorie_libelle = ''
-}
-const onCategorieLibelleInput = () => {
-  if ((produitForm.categorie_libelle || '').trim()) produitForm.id_categorie = null
 }
 
 // ---- API Calls ----
@@ -864,7 +858,6 @@ const openProduitModal = (p) => {
       seuil_alerte: p.seuil_alerte || 0,
       categorie_nom: p.categorie_nom || '',
       sous_categorie_nom: p.sous_categorie_nom || '',
-      categorie_libelle: '',
       id_categorie: p.id_categorie != null ? Number(p.id_categorie) : null,
       id_sous_categorie: p.id_sous_categorie != null ? Number(p.id_sous_categorie) : null,
       id_fournisseur: p.id_fournisseur != null ? Number(p.id_fournisseur) : null
@@ -924,16 +917,8 @@ const saveProduit = async () => {
     const action = isEdit ? 'update_produit' : 'add_produit'
     const body = { ...produitForm }
     if (isEdit) body.id_produit = editingProduit.value.id
-    const saisieLibre = (body.categorie_libelle || '').trim()
-    if (saisieLibre) {
-      body.categorie_libelle = saisieLibre
-      body.id_categorie = null
-      body.id_sous_categorie = null
-    } else {
-      body.id_categorie = body.id_categorie != null && body.id_categorie !== '' ? Number(body.id_categorie) : null
-    }
-    const sousLib = (body.sous_categorie_nom || '').trim()
-    if (sousLib) body.sous_categorie_libelle = sousLib
+    body.id_categorie = body.id_categorie != null && body.id_categorie !== '' ? Number(body.id_categorie) : null
+    body.id_sous_categorie = body.id_sous_categorie != null && body.id_sous_categorie !== '' ? Number(body.id_sous_categorie) : null
     body.id_fournisseur = body.id_fournisseur != null && body.id_fournisseur !== '' ? Number(body.id_fournisseur) : null
 
     const res = await fetch(`${API_BASE}?action=${action}`, {

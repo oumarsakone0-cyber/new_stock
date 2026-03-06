@@ -291,29 +291,13 @@ class ProduitsAPI {
             if ($prix_vente === null || $prix_vente < 0) {
                 $this->sendResponse(400, ['success' => false, 'error' => 'Le prix de vente est requis et doit être >= 0']);
             }
-            // Catégorie : id (liste page Catégories) ou création à partir de saisie libre (categorie_libelle)
-            $categorie_libelle = $this->getStr($data['categorie_libelle'] ?? '');
-            $id_categorie = null;
-            $id_sous_categorie = null;
-            if ($categorie_libelle !== '') {
-                try {
-                    $id_categorie = $this->resolveOrCreateCategorie($id_entreprise, $user_id, $categorie_libelle);
-                    if ($id_categorie !== null) {
-                        $sous_cat_lib = $this->getStr($data['sous_categorie_libelle'] ?? '');
-                        if ($sous_cat_lib !== '') {
-                            $id_sous_categorie = $this->resolveOrCreateSousCategorie($id_entreprise, $id_categorie, $sous_cat_lib);
-                        }
-                    }
-                } catch (Throwable $ex) {
-                    error_log("addProduit categorie saisie libre: " . $ex->getMessage());
-                }
-            } else {
-                $id_cat_raw = $data['id_categorie'] ?? null;
-                if ($id_cat_raw !== null && $id_cat_raw !== '') {
-                    $id_categorie = $this->getInt($id_cat_raw);
-                    if ($id_categorie !== null) {
-                        $id_sous_categorie = $this->getInt($data['id_sous_categorie'] ?? null);
-                    }
+            // Catégorie et sous-catégorie : uniquement id issus des tables app_produits_categories et app_produits_sous_categories
+            $id_categorie = $this->getInt($data['id_categorie'] ?? null);
+            $id_sous_categorie = $this->getInt($data['id_sous_categorie'] ?? null);
+            if ($id_sous_categorie !== null && $id_categorie !== null) {
+                $row = $this->db->query("SELECT id_sous_categorie FROM app_produits_sous_categories WHERE id_sous_categorie = ? AND id_categorie = ? LIMIT 1", [$id_sous_categorie, $id_categorie]);
+                if (!is_array($row) || count($row) === 0) {
+                    $id_sous_categorie = null;
                 }
             }
             $entrepot_nom = $this->getStr($data['entrepot'] ?? '');
@@ -520,16 +504,13 @@ class ProduitsAPI {
             $this->sendResponse(400, ['success' => false, 'error' => 'Le libelle est requis']);
         }
         $uid = $user_id ?? $this->getInt($data['user_id'] ?? null, null);
-        $categorie_libelle = $this->getStr($data['categorie_libelle'] ?? '');
-        $sous_categorie_libelle = $this->getStr($data['sous_categorie_libelle'] ?? '');
         $id_categorie = $this->getInt($data['id_categorie'] ?? null);
         $id_sous_categorie = $this->getInt($data['id_sous_categorie'] ?? null);
-        if ($categorie_libelle !== '') {
-            $id_categorie = $this->resolveOrCreateCategorie($id_entreprise, $uid ?: 0, $categorie_libelle);
-            $id_sous_categorie = null;
-        }
-        if ($id_categorie !== null && $sous_categorie_libelle !== '') {
-            $id_sous_categorie = $this->resolveOrCreateSousCategorie($id_entreprise, $id_categorie, $sous_categorie_libelle);
+        if ($id_sous_categorie !== null && $id_categorie !== null) {
+            $row = $this->db->query("SELECT id_sous_categorie FROM app_produits_sous_categories WHERE id_sous_categorie = ? AND id_categorie = ? LIMIT 1", [$id_sous_categorie, $id_categorie]);
+            if (!is_array($row) || count($row) === 0) {
+                $id_sous_categorie = null;
+            }
         }
         $entrepot_nom = $this->getStr($data['entrepot'] ?? '');
         $sql = "UPDATE app_produits SET
