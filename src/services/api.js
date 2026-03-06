@@ -1,3 +1,7 @@
+// Récupérer toutes les catégories de produits
+export const getCategories = () => {
+  return api.get('api_produit.php?action=list_categories');
+};
 // --- Gestion du stock magasin ---
 export function getEtatStock(magasin_id) {
   return api.get('api_magasins.php?action=etat_stock', { params: { magasin_id } });

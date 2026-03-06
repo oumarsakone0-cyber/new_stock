@@ -85,7 +85,7 @@
                   </div>
                 </td>
                 <td :style="tdStyle">
-                  <span :style="categoryBadgeStyle">{{ produit.categorie || 'Non classé' }}</span>
+                  <span :style="categoryBadgeStyle">{{ produit.categorie_nom || 'Non classé' }}</span>
                 </td>
                 <td :style="tdStyle">{{ formatMoney(produit.prix_vente) }}</td>
                 <td :style="tdStyle">
@@ -165,7 +165,7 @@
               <div :style="categorySelectRowStyle">
                 <select v-model="formData.categorie" :style="{ ...inputStyle, flex: '1' }">
                   <option value="">Sélectionner</option>
-                  <option v-for="cat in categories" :key="cat.id" :value="cat.nom">{{ cat.nom }}</option>
+                  <option v-for="cat in categories" :key="cat.id" :value="cat.libelle">{{ cat.libelle }}</option>
                 </select>
                 <button type="button" :style="addCategoryBtnStyle" @click="showCategoryModal = true" title="Ajouter une catégorie">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -390,7 +390,8 @@ const loadProduits = async () => {
         prix_achat: p.prix_achat_ref,
         stock: p.stock,
         seuil_alerte: p.seuil_alerte,
-        description: p.description
+        description: p.description,
+        categorie_nom: p.categorie_nom || p.categorie || ''
       }))
     } else {
       error.value = data.error || 'Erreur lors du chargement des produits'
